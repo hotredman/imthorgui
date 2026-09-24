@@ -307,14 +307,23 @@ int main(int argc, char** argv) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
-    float main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor(glfwGetPrimaryMonitor());
+    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+    float main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor(monitor);
     if (main_scale <= 0.0f) main_scale = 1.0f;
 
-    int base_w = (int)(1280 * main_scale);
-    int base_h = (int)(720 * main_scale);
+    int mon_x = 0, mon_y = 0, mon_w = 1280, mon_h = 720;
+    glfwGetMonitorWorkarea(monitor, &mon_x, &mon_y, &mon_w, &mon_h);
+
+    // Compute comfortable window dimensions fitting within monitor work area
+    int base_w = (std::min)(mon_w - 40, (int)(1360 * (main_scale > 1.25f ? 1.0f : main_scale)));
+    int base_h = (std::min)(mon_h - 60, (int)(800 * (main_scale > 1.25f ? 1.0f : main_scale)));
+    if (base_w < 1024) base_w = (std::min)(1024, mon_w - 20);
+    if (base_h < 640)  base_h = (std::min)(640, mon_h - 40);
+
     GLFWwindow* window = glfwCreateWindow(base_w, base_h, "ImGui Vector Backend - Stage 0 & 1 Demo", nullptr, nullptr);
     if (window == nullptr)
         return 1;
+    glfwSetWindowPos(window, mon_x + (mon_w - base_w) / 2, mon_y + (mon_h - base_h) / 2);
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); // Enable vsync (60Hz) as standard baseline
 
@@ -340,11 +349,10 @@ int main(int argc, char** argv) {
     // Scale UI style according to monitor DPI
     ImGuiStyle& style = ImGui::GetStyle();
     style.ScaleAllSizes(main_scale);
-    style.FontScaleDpi = main_scale;
 
     // Load clean TrueType font supporting Cyrillic + Latin glyph ranges
     const char* font_path = "C:/Windows/Fonts/segoeui.ttf";
-    float font_size = 18.0f * main_scale;
+    float font_size = 19.0f * main_scale;
     ImFontConfig cfg;
     cfg.OversampleH = 1;
     cfg.OversampleV = 1;
@@ -484,15 +492,27 @@ int main(int argc, char** argv) {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
+        // Responsive side-by-side layout
+        float pad = 12.0f * main_scale;
+        float total_w = io.DisplaySize.x;
+        float total_h = io.DisplaySize.y;
+
+        float hud_w = (std::min)(560.0f * main_scale, (total_w - pad * 3.0f) * 0.44f);
+        float hud_h = total_h - pad * 2.0f;
+        float demo_x = pad + hud_w + pad;
+        float demo_w = total_w - demo_x - pad;
+        float demo_h = total_h - pad * 2.0f;
+
         // 1. Show standard ImGui Demo
-        ImGui::SetNextWindowPos(ImVec2(520 * main_scale, 10 * main_scale), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(650 * main_scale, 680 * main_scale), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowPos(ImVec2(demo_x, pad), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(demo_w, demo_h), ImGuiCond_FirstUseEver);
         ImGui::ShowDemoWindow();
 
         // 2. Metrics & Benchmark HUD
         {
-            ImGui::SetNextWindowPos(ImVec2(10 * main_scale, 10 * main_scale), ImGuiCond_FirstUseEver);
-            ImGui::Begin("ImGui Vector Backend - Controls & Metrics", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+            ImGui::SetNextWindowPos(ImVec2(pad, pad), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(hud_w, hud_h), ImGuiCond_FirstUseEver);
+            ImGui::Begin("ImGui Vector Backend - Controls & Metrics", nullptr);
             ImGui::Text("Dear ImGui %s", IMGUI_VERSION);
             ImGui::Separator();
 
@@ -566,6 +586,13 @@ int main(int argc, char** argv) {
                     use_vector_backend = true;
                     ImGuiExt::SetVectorInterception(true);
                     bench.Start("Stage 3: ThorVG Vector - Mouse Motion (5s)", 5.0);
+                }
+                ImGui::Separator();
+                if (ImGui::Button("Reset Layout to Default")) {
+                    ImGui::SetWindowPos("ImGui Vector Backend - Controls & Metrics", ImVec2(pad, pad));
+                    ImGui::SetWindowSize("ImGui Vector Backend - Controls & Metrics", ImVec2(hud_w, hud_h));
+                    ImGui::SetWindowPos("Dear ImGui Demo", ImVec2(demo_x, pad));
+                    ImGui::SetWindowSize("Dear ImGui Demo", ImVec2(demo_w, demo_h));
                 }
             }
             ImGui::End();
