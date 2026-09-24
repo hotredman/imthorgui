@@ -121,6 +121,8 @@ private:
     std::string m_default_font_name = "default";
     float m_font_scale_ratio = 1.7731f; // TrueType EM-to-Pixel height calibration ratio
     bool m_font_loaded = false;
+    ImVec2 m_display_scale = ImVec2(1.0f, 1.0f);
+    ImVec2 m_display_pos = ImVec2(0.0f, 0.0f);
 
     // OpenGL presentation
     GLuint m_gl_texture = 0;
@@ -602,21 +604,32 @@ void ThorVGRenderer::RasterizeFallbackTriangles(const ImDrawList* dl, const Draw
         const ImDrawVert& v1 = dl->VtxBuffer[idx1];
         const ImDrawVert& v2 = dl->VtxBuffer[idx2];
 
+        // Vertex positions scaled to physical framebuffer
+        ImVec2 p0((v0.pos.x - m_display_pos.x) * m_display_scale.x, (v0.pos.y - m_display_pos.y) * m_display_scale.y);
+        ImVec2 p1((v1.pos.x - m_display_pos.x) * m_display_scale.x, (v1.pos.y - m_display_pos.y) * m_display_scale.y);
+        ImVec2 p2((v2.pos.x - m_display_pos.x) * m_display_scale.x, (v2.pos.y - m_display_pos.y) * m_display_scale.y);
+
+        // Scaled clip rect
+        float clip_x1 = (cmd.clip_rect.x - m_display_pos.x) * m_display_scale.x;
+        float clip_y1 = (cmd.clip_rect.y - m_display_pos.y) * m_display_scale.y;
+        float clip_x2 = (cmd.clip_rect.z - m_display_pos.x) * m_display_scale.x;
+        float clip_y2 = (cmd.clip_rect.w - m_display_pos.y) * m_display_scale.y;
+
         // Triangle bounding box
-        float min_x = (std::min)({v0.pos.x, v1.pos.x, v2.pos.x});
-        float max_x = (std::max)({v0.pos.x, v1.pos.x, v2.pos.x});
-        float min_y = (std::min)({v0.pos.y, v1.pos.y, v2.pos.y});
-        float max_y = (std::max)({v0.pos.y, v1.pos.y, v2.pos.y});
+        float min_x = (std::min)({p0.x, p1.x, p2.x});
+        float max_x = (std::max)({p0.x, p1.x, p2.x});
+        float min_y = (std::min)({p0.y, p1.y, p2.y});
+        float max_y = (std::max)({p0.y, p1.y, p2.y});
 
         // Clip to clip_rect and screen
-        int x0 = (std::max)(0, (int)std::floor((std::max)(min_x, cmd.clip_rect.x)));
-        int x1 = (std::min)(m_width - 1, (int)std::ceil((std::min)(max_x, cmd.clip_rect.z)));
-        int y0 = (std::max)(0, (int)std::floor((std::max)(min_y, cmd.clip_rect.y)));
-        int y1 = (std::min)(m_height - 1, (int)std::ceil((std::min)(max_y, cmd.clip_rect.w)));
+        int x0 = (std::max)(0, (int)std::floor((std::max)(min_x, clip_x1)));
+        int x1 = (std::min)(m_width - 1, (int)std::ceil((std::min)(max_x, clip_x2)));
+        int y0 = (std::max)(0, (int)std::floor((std::max)(min_y, clip_y1)));
+        int y1 = (std::min)(m_height - 1, (int)std::ceil((std::min)(max_y, clip_y2)));
 
         if (x0 > x1 || y0 > y1) continue;
 
-        float denom = (v1.pos.y - v2.pos.y) * (v0.pos.x - v2.pos.x) + (v2.pos.x - v1.pos.x) * (v0.pos.y - v2.pos.y);
+        float denom = (p1.y - p2.y) * (p0.x - p2.x) + (p2.x - p1.x) * (p0.y - p2.y);
         if (std::abs(denom) < 1e-5f) continue;
         float inv_denom = 1.0f / denom;
 
@@ -624,8 +637,8 @@ void ThorVGRenderer::RasterizeFallbackTriangles(const ImDrawList* dl, const Draw
             float py = y + 0.5f;
             for (int x = x0; x <= x1; ++x) {
                 float px = x + 0.5f;
-                float w0 = ((v1.pos.y - v2.pos.y) * (px - v2.pos.x) + (v2.pos.x - v1.pos.x) * (py - v2.pos.y)) * inv_denom;
-                float w1 = ((v2.pos.y - v0.pos.y) * (px - v2.pos.x) + (v0.pos.x - v2.pos.x) * (py - v2.pos.y)) * inv_denom;
+                float w0 = ((p1.y - p2.y) * (px - p2.x) + (p2.x - p1.x) * (py - p2.y)) * inv_denom;
+                float w1 = ((p2.y - p0.y) * (px - p2.x) + (p0.x - p2.x) * (py - p2.y)) * inv_denom;
                 float w2 = 1.0f - w0 - w1;
 
                 if (w0 >= 0.0f && w1 >= 0.0f && w2 >= 0.0f) {
@@ -688,9 +701,9 @@ void ThorVGRenderer::DrawFallbackMesh(const ImDrawList* dl, const DrawCommand& c
             const ImDrawVert& v2 = dl->VtxBuffer[idx2];
 
             auto shape = tvg::Shape::gen();
-            shape->moveTo(v0.pos.x, v0.pos.y);
-            shape->lineTo(v1.pos.x, v1.pos.y);
-            shape->lineTo(v2.pos.x, v2.pos.y);
+            shape->moveTo((v0.pos.x - m_display_pos.x) * m_display_scale.x, (v0.pos.y - m_display_pos.y) * m_display_scale.y);
+            shape->lineTo((v1.pos.x - m_display_pos.x) * m_display_scale.x, (v1.pos.y - m_display_pos.y) * m_display_scale.y);
+            shape->lineTo((v2.pos.x - m_display_pos.x) * m_display_scale.x, (v2.pos.y - m_display_pos.y) * m_display_scale.y);
             shape->close();
 
             Color col = Color::FromImU32(v0.col);
@@ -708,6 +721,11 @@ void ThorVGRenderer::DrawFallbackMesh(const ImDrawList* dl, const DrawCommand& c
 void ThorVGRenderer::RenderDrawData(ImDrawData* draw_data) {
     if (!draw_data) return;
 
+    m_display_scale = draw_data->FramebufferScale;
+    m_display_pos = draw_data->DisplayPos;
+    if (m_display_scale.x <= 0.0f) m_display_scale.x = 1.0f;
+    if (m_display_scale.y <= 0.0f) m_display_scale.y = 1.0f;
+
     BeginFrame();
 
     int cmd_lists_count = draw_data->CmdLists.Size;
@@ -718,91 +736,188 @@ void ThorVGRenderer::RenderDrawData(ImDrawData* draw_data) {
 
         for (const auto& cmd : stream.commands) {
             switch (cmd.type) {
-            case CmdType::PushClipRect:
-                PushClip(cmd.clip_rect.x, cmd.clip_rect.y, cmd.clip_rect.z - cmd.clip_rect.x, cmd.clip_rect.w - cmd.clip_rect.y);
+            case CmdType::PushClipRect: {
+                float cx = (cmd.clip_rect.x - m_display_pos.x) * m_display_scale.x;
+                float cy = (cmd.clip_rect.y - m_display_pos.y) * m_display_scale.y;
+                float cw = (cmd.clip_rect.z - cmd.clip_rect.x) * m_display_scale.x;
+                float ch = (cmd.clip_rect.w - cmd.clip_rect.y) * m_display_scale.y;
+                PushClip(cx, cy, cw, ch);
                 break;
+            }
             case CmdType::PopClipRect:
                 PopClip();
                 break;
-            case CmdType::RectFilled:
-                FillRect(cmd.p1.x, cmd.p1.y, cmd.p2.x - cmd.p1.x, cmd.p2.y - cmd.p1.y, Color::FromImU32(cmd.col), cmd.rounding);
+            case CmdType::RectFilled: {
+                float x = (cmd.p1.x - m_display_pos.x) * m_display_scale.x;
+                float y = (cmd.p1.y - m_display_pos.y) * m_display_scale.y;
+                float w = (cmd.p2.x - cmd.p1.x) * m_display_scale.x;
+                float h = (cmd.p2.y - cmd.p1.y) * m_display_scale.y;
+                float rounding = cmd.rounding * m_display_scale.x;
+                FillRect(x, y, w, h, Color::FromImU32(cmd.col), rounding);
                 break;
-            case CmdType::Rect:
-                StrokeRect(cmd.p1.x, cmd.p1.y, cmd.p2.x - cmd.p1.x, cmd.p2.y - cmd.p1.y, Color::FromImU32(cmd.col), cmd.thickness, cmd.rounding);
+            }
+            case CmdType::Rect: {
+                float x = (cmd.p1.x - m_display_pos.x) * m_display_scale.x;
+                float y = (cmd.p1.y - m_display_pos.y) * m_display_scale.y;
+                float w = (cmd.p2.x - cmd.p1.x) * m_display_scale.x;
+                float h = (cmd.p2.y - cmd.p1.y) * m_display_scale.y;
+                float thickness = cmd.thickness * m_display_scale.x;
+                float rounding = cmd.rounding * m_display_scale.x;
+                StrokeRect(x, y, w, h, Color::FromImU32(cmd.col), thickness, rounding);
                 break;
+            }
             case CmdType::RectFilledMultiColor: {
-                float w = cmd.p2.x - cmd.p1.x;
-                float h = cmd.p2.y - cmd.p1.y;
+                float x = (cmd.p1.x - m_display_pos.x) * m_display_scale.x;
+                float y = (cmd.p1.y - m_display_pos.y) * m_display_scale.y;
+                float w = (cmd.p2.x - cmd.p1.x) * m_display_scale.x;
+                float h = (cmd.p2.y - cmd.p1.y) * m_display_scale.y;
+                float rounding = cmd.rounding * m_display_scale.x;
                 if (cmd.col == cmd.col4 && cmd.col2 == cmd.col3) {
-                    FillRectLinearGradient(cmd.p1.x, cmd.p1.y, w, h, cmd.p1.x, cmd.p1.y, Color::FromImU32(cmd.col), cmd.p2.x, cmd.p1.y, Color::FromImU32(cmd.col2), cmd.rounding);
+                    FillRectLinearGradient(x, y, w, h, x, y, Color::FromImU32(cmd.col), x + w, y, Color::FromImU32(cmd.col2), rounding);
                 } else {
-                    FillRectLinearGradient(cmd.p1.x, cmd.p1.y, w, h, cmd.p1.x, cmd.p1.y, Color::FromImU32(cmd.col), cmd.p1.x, cmd.p2.y, Color::FromImU32(cmd.col4), cmd.rounding);
+                    FillRectLinearGradient(x, y, w, h, x, y, Color::FromImU32(cmd.col), x, y + h, Color::FromImU32(cmd.col4), rounding);
                 }
                 break;
             }
-            case CmdType::Line:
-                StrokeLine(cmd.p1.x, cmd.p1.y, cmd.p2.x, cmd.p2.y, Color::FromImU32(cmd.col), cmd.thickness);
+            case CmdType::Line: {
+                float x1 = (cmd.p1.x - m_display_pos.x) * m_display_scale.x;
+                float y1 = (cmd.p1.y - m_display_pos.y) * m_display_scale.y;
+                float x2 = (cmd.p2.x - m_display_pos.x) * m_display_scale.x;
+                float y2 = (cmd.p2.y - m_display_pos.y) * m_display_scale.y;
+                float thickness = cmd.thickness * m_display_scale.x;
+                StrokeLine(x1, y1, x2, y2, Color::FromImU32(cmd.col), thickness);
                 break;
-            case CmdType::Circle:
-                StrokeCircle(cmd.p1.x, cmd.p1.y, cmd.radius, Color::FromImU32(cmd.col), cmd.thickness);
+            }
+            case CmdType::Circle: {
+                float cx = (cmd.p1.x - m_display_pos.x) * m_display_scale.x;
+                float cy = (cmd.p1.y - m_display_pos.y) * m_display_scale.y;
+                float radius = cmd.radius * m_display_scale.x;
+                float thickness = cmd.thickness * m_display_scale.x;
+                StrokeCircle(cx, cy, radius, Color::FromImU32(cmd.col), thickness);
                 break;
-            case CmdType::CircleFilled:
-                FillCircle(cmd.p1.x, cmd.p1.y, cmd.radius, Color::FromImU32(cmd.col));
+            }
+            case CmdType::CircleFilled: {
+                float cx = (cmd.p1.x - m_display_pos.x) * m_display_scale.x;
+                float cy = (cmd.p1.y - m_display_pos.y) * m_display_scale.y;
+                float radius = cmd.radius * m_display_scale.x;
+                FillCircle(cx, cy, radius, Color::FromImU32(cmd.col));
                 break;
-            case CmdType::Ngon:
-                StrokeNgon(cmd.p1.x, cmd.p1.y, cmd.radius, cmd.num_segments, Color::FromImU32(cmd.col), cmd.thickness);
+            }
+            case CmdType::Ngon: {
+                float cx = (cmd.p1.x - m_display_pos.x) * m_display_scale.x;
+                float cy = (cmd.p1.y - m_display_pos.y) * m_display_scale.y;
+                float radius = cmd.radius * m_display_scale.x;
+                float thickness = cmd.thickness * m_display_scale.x;
+                StrokeNgon(cx, cy, radius, cmd.num_segments, Color::FromImU32(cmd.col), thickness);
                 break;
-            case CmdType::NgonFilled:
-                FillNgon(cmd.p1.x, cmd.p1.y, cmd.radius, cmd.num_segments, Color::FromImU32(cmd.col));
+            }
+            case CmdType::NgonFilled: {
+                float cx = (cmd.p1.x - m_display_pos.x) * m_display_scale.x;
+                float cy = (cmd.p1.y - m_display_pos.y) * m_display_scale.y;
+                float radius = cmd.radius * m_display_scale.x;
+                FillNgon(cx, cy, radius, cmd.num_segments, Color::FromImU32(cmd.col));
                 break;
-            case CmdType::Ellipse:
-                StrokeEllipse(cmd.p1.x, cmd.p1.y, cmd.p2.x, cmd.p2.y, cmd.radius, Color::FromImU32(cmd.col), cmd.thickness);
+            }
+            case CmdType::Ellipse: {
+                float cx = (cmd.p1.x - m_display_pos.x) * m_display_scale.x;
+                float cy = (cmd.p1.y - m_display_pos.y) * m_display_scale.y;
+                float rx = cmd.p2.x * m_display_scale.x;
+                float ry = cmd.p2.y * m_display_scale.y;
+                float thickness = cmd.thickness * m_display_scale.x;
+                StrokeEllipse(cx, cy, rx, ry, cmd.radius, Color::FromImU32(cmd.col), thickness);
                 break;
-            case CmdType::EllipseFilled:
-                FillEllipse(cmd.p1.x, cmd.p1.y, cmd.p2.x, cmd.p2.y, cmd.radius, Color::FromImU32(cmd.col));
+            }
+            case CmdType::EllipseFilled: {
+                float cx = (cmd.p1.x - m_display_pos.x) * m_display_scale.x;
+                float cy = (cmd.p1.y - m_display_pos.y) * m_display_scale.y;
+                float rx = cmd.p2.x * m_display_scale.x;
+                float ry = cmd.p2.y * m_display_scale.y;
+                FillEllipse(cx, cy, rx, ry, cmd.radius, Color::FromImU32(cmd.col));
                 break;
+            }
             case CmdType::Triangle: {
-                ImVec2 pts[3] = { cmd.p1, cmd.p2, cmd.p3 };
-                StrokePolyline(pts, 3, Color::FromImU32(cmd.col), cmd.thickness, true);
+                ImVec2 pts[3] = {
+                    ImVec2((cmd.p1.x - m_display_pos.x) * m_display_scale.x, (cmd.p1.y - m_display_pos.y) * m_display_scale.y),
+                    ImVec2((cmd.p2.x - m_display_pos.x) * m_display_scale.x, (cmd.p2.y - m_display_pos.y) * m_display_scale.y),
+                    ImVec2((cmd.p3.x - m_display_pos.x) * m_display_scale.x, (cmd.p3.y - m_display_pos.y) * m_display_scale.y)
+                };
+                StrokePolyline(pts, 3, Color::FromImU32(cmd.col), cmd.thickness * m_display_scale.x, true);
                 break;
             }
             case CmdType::TriangleFilled: {
-                ImVec2 pts[3] = { cmd.p1, cmd.p2, cmd.p3 };
+                ImVec2 pts[3] = {
+                    ImVec2((cmd.p1.x - m_display_pos.x) * m_display_scale.x, (cmd.p1.y - m_display_pos.y) * m_display_scale.y),
+                    ImVec2((cmd.p2.x - m_display_pos.x) * m_display_scale.x, (cmd.p2.y - m_display_pos.y) * m_display_scale.y),
+                    ImVec2((cmd.p3.x - m_display_pos.x) * m_display_scale.x, (cmd.p3.y - m_display_pos.y) * m_display_scale.y)
+                };
                 FillConvexPoly(pts, 3, Color::FromImU32(cmd.col));
                 break;
             }
             case CmdType::Quad: {
-                ImVec2 pts[4] = { cmd.p1, cmd.p2, cmd.p3, cmd.p4 };
-                StrokePolyline(pts, 4, Color::FromImU32(cmd.col), cmd.thickness, true);
+                ImVec2 pts[4] = {
+                    ImVec2((cmd.p1.x - m_display_pos.x) * m_display_scale.x, (cmd.p1.y - m_display_pos.y) * m_display_scale.y),
+                    ImVec2((cmd.p2.x - m_display_pos.x) * m_display_scale.x, (cmd.p2.y - m_display_pos.y) * m_display_scale.y),
+                    ImVec2((cmd.p3.x - m_display_pos.x) * m_display_scale.x, (cmd.p3.y - m_display_pos.y) * m_display_scale.y),
+                    ImVec2((cmd.p4.x - m_display_pos.x) * m_display_scale.x, (cmd.p4.y - m_display_pos.y) * m_display_scale.y)
+                };
+                StrokePolyline(pts, 4, Color::FromImU32(cmd.col), cmd.thickness * m_display_scale.x, true);
                 break;
             }
             case CmdType::QuadFilled: {
-                ImVec2 pts[4] = { cmd.p1, cmd.p2, cmd.p3, cmd.p4 };
+                ImVec2 pts[4] = {
+                    ImVec2((cmd.p1.x - m_display_pos.x) * m_display_scale.x, (cmd.p1.y - m_display_pos.y) * m_display_scale.y),
+                    ImVec2((cmd.p2.x - m_display_pos.x) * m_display_scale.x, (cmd.p2.y - m_display_pos.y) * m_display_scale.y),
+                    ImVec2((cmd.p3.x - m_display_pos.x) * m_display_scale.x, (cmd.p3.y - m_display_pos.y) * m_display_scale.y),
+                    ImVec2((cmd.p4.x - m_display_pos.x) * m_display_scale.x, (cmd.p4.y - m_display_pos.y) * m_display_scale.y)
+                };
                 FillConvexPoly(pts, 4, Color::FromImU32(cmd.col));
                 break;
             }
             case CmdType::Polyline: {
-                const ImVec2* pts = &stream.points_pool[cmd.data_offset];
+                const ImVec2* src_pts = &stream.points_pool[cmd.data_offset];
                 bool closed = (cmd.flags & ImDrawFlags_Closed) != 0;
-                StrokePolyline(pts, (int)cmd.data_size, Color::FromImU32(cmd.col), cmd.thickness, closed);
+                std::vector<ImVec2> pts(cmd.data_size);
+                for (size_t i = 0; i < cmd.data_size; ++i) {
+                    pts[i].x = (src_pts[i].x - m_display_pos.x) * m_display_scale.x;
+                    pts[i].y = (src_pts[i].y - m_display_pos.y) * m_display_scale.y;
+                }
+                StrokePolyline(pts.data(), (int)cmd.data_size, Color::FromImU32(cmd.col), cmd.thickness * m_display_scale.x, closed);
                 break;
             }
             case CmdType::ConvexPolyFilled:
             case CmdType::ConcavePolyFilled: {
-                const ImVec2* pts = &stream.points_pool[cmd.data_offset];
-                FillConvexPoly(pts, (int)cmd.data_size, Color::FromImU32(cmd.col));
+                const ImVec2* src_pts = &stream.points_pool[cmd.data_offset];
+                std::vector<ImVec2> pts(cmd.data_size);
+                for (size_t i = 0; i < cmd.data_size; ++i) {
+                    pts[i].x = (src_pts[i].x - m_display_pos.x) * m_display_scale.x;
+                    pts[i].y = (src_pts[i].y - m_display_pos.y) * m_display_scale.y;
+                }
+                FillConvexPoly(pts.data(), (int)cmd.data_size, Color::FromImU32(cmd.col));
                 break;
             }
-            case CmdType::BezierCubic:
-                StrokeBezierCubic(cmd.p1, cmd.p2, cmd.p3, cmd.p4, Color::FromImU32(cmd.col), cmd.thickness);
+            case CmdType::BezierCubic: {
+                ImVec2 p1((cmd.p1.x - m_display_pos.x) * m_display_scale.x, (cmd.p1.y - m_display_pos.y) * m_display_scale.y);
+                ImVec2 p2((cmd.p2.x - m_display_pos.x) * m_display_scale.x, (cmd.p2.y - m_display_pos.y) * m_display_scale.y);
+                ImVec2 p3((cmd.p3.x - m_display_pos.x) * m_display_scale.x, (cmd.p3.y - m_display_pos.y) * m_display_scale.y);
+                ImVec2 p4((cmd.p4.x - m_display_pos.x) * m_display_scale.x, (cmd.p4.y - m_display_pos.y) * m_display_scale.y);
+                StrokeBezierCubic(p1, p2, p3, p4, Color::FromImU32(cmd.col), cmd.thickness * m_display_scale.x);
                 break;
-            case CmdType::BezierQuadratic:
-                StrokeBezierQuadratic(cmd.p1, cmd.p2, cmd.p3, Color::FromImU32(cmd.col), cmd.thickness);
+            }
+            case CmdType::BezierQuadratic: {
+                ImVec2 p1((cmd.p1.x - m_display_pos.x) * m_display_scale.x, (cmd.p1.y - m_display_pos.y) * m_display_scale.y);
+                ImVec2 p2((cmd.p2.x - m_display_pos.x) * m_display_scale.x, (cmd.p2.y - m_display_pos.y) * m_display_scale.y);
+                ImVec2 p3((cmd.p3.x - m_display_pos.x) * m_display_scale.x, (cmd.p3.y - m_display_pos.y) * m_display_scale.y);
+                StrokeBezierQuadratic(p1, p2, p3, Color::FromImU32(cmd.col), cmd.thickness * m_display_scale.x);
                 break;
+            }
             case CmdType::Text: {
                 const char* text_str = &stream.text_pool[cmd.data_offset];
                 const char* font_name = cmd.font ? cmd.font->GetDebugName() : m_default_font_name.c_str();
-                DrawText(text_str, cmd.p1.x, cmd.p1.y, Color::FromImU32(cmd.col), font_name, cmd.font_size, cmd.wrap_width);
+                float tx = (cmd.p1.x - m_display_pos.x) * m_display_scale.x;
+                float ty = (cmd.p1.y - m_display_pos.y) * m_display_scale.y;
+                float font_size = cmd.font_size * m_display_scale.y;
+                float wrap_width = cmd.wrap_width > 0.0f ? cmd.wrap_width * m_display_scale.x : 0.0f;
+                DrawText(text_str, tx, ty, Color::FromImU32(cmd.col), font_name, font_size, wrap_width);
                 break;
             }
             case CmdType::Image:

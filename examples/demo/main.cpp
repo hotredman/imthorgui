@@ -307,11 +307,21 @@ int main(int argc, char** argv) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "ImGui Vector Backend - Stage 0 & 1 Demo", nullptr, nullptr);
+    float main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor(glfwGetPrimaryMonitor());
+    if (main_scale <= 0.0f) main_scale = 1.0f;
+
+    int base_w = (int)(1280 * main_scale);
+    int base_h = (int)(720 * main_scale);
+    GLFWwindow* window = glfwCreateWindow(base_w, base_h, "ImGui Vector Backend - Stage 0 & 1 Demo", nullptr, nullptr);
     if (window == nullptr)
         return 1;
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); // Enable vsync (60Hz) as standard baseline
+
+    float window_scale = ImGui_ImplGlfw_GetContentScaleForWindow(window);
+    if (window_scale > 0.0f) main_scale = window_scale;
+
+    std::cout << "[Demo] Monitor Content Scale: " << main_scale << ", Window Size: " << base_w << "x" << base_h << "\n";
 
     InitGLQueries();
 
@@ -327,6 +337,24 @@ int main(int argc, char** argv) {
 
     ImGui::StyleColorsDark();
 
+    // Scale UI style according to monitor DPI
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.ScaleAllSizes(main_scale);
+    style.FontScaleDpi = main_scale;
+
+    // Load clean TrueType font supporting Cyrillic + Latin glyph ranges
+    const char* font_path = "C:/Windows/Fonts/segoeui.ttf";
+    float font_size = 18.0f * main_scale;
+    ImFontConfig cfg;
+    cfg.OversampleH = 1;
+    cfg.OversampleV = 1;
+    cfg.PixelSnapH = false;
+    ImFont* font = io.Fonts->AddFontFromFileTTF(font_path, font_size, &cfg, io.Fonts->GetGlyphRangesCyrillic());
+    if (!font) {
+        font_path = "C:/Windows/Fonts/arial.ttf";
+        font = io.Fonts->AddFontFromFileTTF(font_path, font_size, &cfg, io.Fonts->GetGlyphRangesCyrillic());
+    }
+
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
@@ -337,6 +365,9 @@ int main(int argc, char** argv) {
     int init_fb_w = 0, init_fb_h = 0;
     glfwGetFramebufferSize(window, &init_fb_w, &init_fb_h);
     vector_renderer->Init(init_fb_w, init_fb_h);
+    if (font) {
+        vector_renderer->LoadFontFile(font_path);
+    }
     bool use_vector_backend = true;
     ImGuiExt::SetVectorInterception(use_vector_backend);
 
@@ -367,8 +398,8 @@ int main(int argc, char** argv) {
                 auto_bench_stage = 3;
             } else if (auto_bench_stage == 3) {
                 double t = std::chrono::duration<double>(now - bench_stage_timer).count() * 4.0;
-                double mx = 640.0 + 300.0 * std::sin(t);
-                double my = 360.0 + 200.0 * std::cos(t);
+                double mx = (640.0 + 300.0 * std::sin(t)) * main_scale;
+                double my = (360.0 + 200.0 * std::cos(t)) * main_scale;
                 glfwSetCursorPos(window, mx, my);
                 ImGuiExt::RequestRepaint(3);
                 if (!bench.running) {
@@ -385,8 +416,8 @@ int main(int argc, char** argv) {
                 auto_bench_stage = 5;
             } else if (auto_bench_stage == 5) {
                 double t = std::chrono::duration<double>(now - bench_stage_timer).count() * 4.0;
-                double mx = 640.0 + 300.0 * std::sin(t);
-                double my = 360.0 + 200.0 * std::cos(t);
+                double mx = (640.0 + 300.0 * std::sin(t)) * main_scale;
+                double my = (360.0 + 200.0 * std::cos(t)) * main_scale;
                 glfwSetCursorPos(window, mx, my);
                 ImGuiExt::RequestRepaint(3);
                 if (!bench.running) {
@@ -403,8 +434,8 @@ int main(int argc, char** argv) {
                 auto_bench_stage = 7;
             } else if (auto_bench_stage == 7) {
                 double t = std::chrono::duration<double>(now - bench_stage_timer).count() * 4.0;
-                double mx = 640.0 + 300.0 * std::sin(t);
-                double my = 360.0 + 200.0 * std::cos(t);
+                double mx = (640.0 + 300.0 * std::sin(t)) * main_scale;
+                double my = (360.0 + 200.0 * std::cos(t)) * main_scale;
                 glfwSetCursorPos(window, mx, my);
                 ImGuiExt::RequestRepaint(3);
                 if (!bench.running) {
@@ -422,8 +453,8 @@ int main(int argc, char** argv) {
                 auto_bench_stage = 9;
             } else if (auto_bench_stage == 9) {
                 double t = std::chrono::duration<double>(now - bench_stage_timer).count() * 4.0;
-                double mx = 640.0 + 300.0 * std::sin(t);
-                double my = 360.0 + 200.0 * std::cos(t);
+                double mx = (640.0 + 300.0 * std::sin(t)) * main_scale;
+                double my = (360.0 + 200.0 * std::cos(t)) * main_scale;
                 glfwSetCursorPos(window, mx, my);
                 ImGuiExt::RequestRepaint(3);
                 if (!bench.running) {
@@ -454,11 +485,13 @@ int main(int argc, char** argv) {
         ImGui::NewFrame();
 
         // 1. Show standard ImGui Demo
+        ImGui::SetNextWindowPos(ImVec2(520 * main_scale, 10 * main_scale), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(650 * main_scale, 680 * main_scale), ImGuiCond_FirstUseEver);
         ImGui::ShowDemoWindow();
 
         // 2. Metrics & Benchmark HUD
         {
-            ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowPos(ImVec2(10 * main_scale, 10 * main_scale), ImGuiCond_FirstUseEver);
             ImGui::Begin("ImGui Vector Backend - Controls & Metrics", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
             ImGui::Text("Dear ImGui %s", IMGUI_VERSION);
             ImGui::Separator();
