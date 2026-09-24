@@ -338,7 +338,7 @@ int main(int argc, char** argv) {
     if (base_w < 1024) base_w = (std::min)(1024, mon_w - 20);
     if (base_h < 640)  base_h = (std::min)(640, mon_h - 40);
 
-    GLFWwindow* window = glfwCreateWindow(base_w, base_h, "ImGui Vector Backend - Stage 0 & 1 Demo", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(base_w, base_h, "ImGui Vector Backend - ThorVG Demo", nullptr, nullptr);
     if (window == nullptr)
         return 1;
     glfwSetWindowPos(window, mon_x + (mon_w - base_w) / 2, mon_y + (mon_h - base_h) / 2);
