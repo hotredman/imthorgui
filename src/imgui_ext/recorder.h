@@ -76,6 +76,11 @@ struct DrawCommand {
     ImFont* font = nullptr;
     float font_size = 0.0f;
     float wrap_width = 0.0f;
+
+    DrawCommand() {
+        std::memset(static_cast<void*>(this), 0, sizeof(*this));
+        thickness = 1.0f;
+    }
 };
 
 struct DrawListStream {

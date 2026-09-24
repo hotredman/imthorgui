@@ -1,8 +1,10 @@
 #pragma once
 
+#include "imgui.h"
 #include <GLFW/glfw3.h>
 #include <atomic>
 #include <chrono>
+#include <algorithm>
 
 namespace ImGuiExt {
 
@@ -20,11 +22,14 @@ public:
 
         // Chain GLFW input callbacks so every event requests repaint
         m_prev_cursor_pos = glfwSetCursorPosCallback(window, CursorPosCallback);
+        m_prev_cursor_enter = glfwSetCursorEnterCallback(window, CursorEnterCallback);
         m_prev_mouse_button = glfwSetMouseButtonCallback(window, MouseButtonCallback);
         m_prev_scroll = glfwSetScrollCallback(window, ScrollCallback);
         m_prev_key = glfwSetKeyCallback(window, KeyCallback);
         m_prev_char = glfwSetCharCallback(window, CharCallback);
         m_prev_window_size = glfwSetWindowSizeCallback(window, WindowSizeCallback);
+        m_prev_window_pos = glfwSetWindowPosCallback(window, WindowPosCallback);
+        m_prev_framebuffer_size = glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
         m_prev_window_refresh = glfwSetWindowRefreshCallback(window, WindowRefreshCallback);
         m_prev_window_focus = glfwSetWindowFocusCallback(window, WindowFocusCallback);
     }
@@ -59,6 +64,15 @@ public:
         if (!m_reactive_mode) {
             glfwPollEvents();
             return true;
+        }
+
+        // Keep rendering while mouse button is held down (dragging sliders, scrolling, etc.)
+        if (ImGui::GetCurrentContext()) {
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.MouseDown[0] || io.MouseDown[1] || io.MouseDown[2]) {
+                int current = m_repaint_frames_left.load();
+                while (current < 2 && !m_repaint_frames_left.compare_exchange_weak(current, 2)) {}
+            }
         }
 
         // If we have pending repaint frames, render immediately without sleeping
@@ -105,17 +119,25 @@ private:
 
     // Chained callbacks
     GLFWcursorposfun m_prev_cursor_pos = nullptr;
+    GLFWcursorenterfun m_prev_cursor_enter = nullptr;
     GLFWmousebuttonfun m_prev_mouse_button = nullptr;
     GLFWscrollfun m_prev_scroll = nullptr;
     GLFWkeyfun m_prev_key = nullptr;
     GLFWcharfun m_prev_char = nullptr;
     GLFWwindowsizefun m_prev_window_size = nullptr;
+    GLFWwindowposfun m_prev_window_pos = nullptr;
+    GLFWframebuffersizefun m_prev_framebuffer_size = nullptr;
     GLFWwindowrefreshfun m_prev_window_refresh = nullptr;
     GLFWwindowfocusfun m_prev_window_focus = nullptr;
 
     static void CursorPosCallback(GLFWwindow* w, double x, double y) {
         Instance().RequestRepaint(3);
         if (Instance().m_prev_cursor_pos) Instance().m_prev_cursor_pos(w, x, y);
+    }
+
+    static void CursorEnterCallback(GLFWwindow* w, int entered) {
+        Instance().RequestRepaint(3);
+        if (Instance().m_prev_cursor_enter) Instance().m_prev_cursor_enter(w, entered);
     }
 
     static void MouseButtonCallback(GLFWwindow* w, int b, int a, int m) {
@@ -141,6 +163,16 @@ private:
     static void WindowSizeCallback(GLFWwindow* w, int width, int height) {
         Instance().RequestRepaint(3);
         if (Instance().m_prev_window_size) Instance().m_prev_window_size(w, width, height);
+    }
+
+    static void WindowPosCallback(GLFWwindow* w, int x, int y) {
+        Instance().RequestRepaint(3);
+        if (Instance().m_prev_window_pos) Instance().m_prev_window_pos(w, x, y);
+    }
+
+    static void FramebufferSizeCallback(GLFWwindow* w, int width, int height) {
+        Instance().RequestRepaint(3);
+        if (Instance().m_prev_framebuffer_size) Instance().m_prev_framebuffer_size(w, width, height);
     }
 
     static void WindowRefreshCallback(GLFWwindow* w) {

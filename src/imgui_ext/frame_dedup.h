@@ -1,6 +1,7 @@
 #pragma once
 
 #include "imgui.h"
+#include "imgui_ext/recorder.h"
 #include <cstdint>
 #include <cstddef>
 
@@ -45,6 +46,10 @@ public:
     bool ShouldRenderFrame(const ImDrawData* draw_data) {
         if (!m_enabled || draw_data == nullptr || !draw_data->Valid) {
             return true;
+        }
+
+        if (Recorder::Instance().IsEnabled()) {
+            Recorder::Instance().EndFrame();
         }
 
         m_total_checked++;
@@ -116,10 +121,35 @@ private:
 
         hash = FastHash(&header, sizeof(header), hash);
 
+        bool vector_enabled = Recorder::Instance().IsEnabled();
+        const auto& streams = Recorder::Instance().GetStreams();
+
         // Hash contents of each ImDrawList
         for (int i = 0; i < draw_data->CmdListsCount; ++i) {
             const ImDrawList* cmd_list = draw_data->CmdLists[i];
             if (!cmd_list) continue;
+
+            if (vector_enabled) {
+                auto it = streams.find(const_cast<ImDrawList*>(cmd_list));
+                if (it != streams.end()) {
+                    const DrawListStream& stream = it->second;
+                    size_t cmd_count = stream.commands.size();
+                    hash = FastHash(&cmd_count, sizeof(cmd_count), hash);
+                    if (!stream.commands.empty()) {
+                        hash = FastHash(stream.commands.data(), stream.commands.size() * sizeof(DrawCommand), hash);
+                    }
+                    size_t pts_count = stream.points_pool.size();
+                    hash = FastHash(&pts_count, sizeof(pts_count), hash);
+                    if (!stream.points_pool.empty()) {
+                        hash = FastHash(stream.points_pool.data(), stream.points_pool.size() * sizeof(ImVec2), hash);
+                    }
+                    size_t txt_count = stream.text_pool.size();
+                    hash = FastHash(&txt_count, sizeof(txt_count), hash);
+                    if (!stream.text_pool.empty()) {
+                        hash = FastHash(stream.text_pool.data(), stream.text_pool.size() * sizeof(char), hash);
+                    }
+                }
+            }
 
             // Hash command buffer (ClipRect, TextureId, ElemCount, offsets, callbacks)
             if (!cmd_list->CmdBuffer.empty()) {

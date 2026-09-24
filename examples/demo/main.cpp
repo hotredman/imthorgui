@@ -59,6 +59,13 @@ struct PerformanceMetrics {
     double gpu_frame_time_ms = 0.0;
     double fps = 0.0;
 
+    double display_fps = 0.0;
+    double display_cpu_frame_ms = 0.0;
+    double display_cpu_work_ms = 0.0;
+    double display_gpu_frame_ms = 0.0;
+    uint64_t display_skipped_frames = 0;
+    std::chrono::steady_clock::time_point last_display_update_time{};
+
 #ifdef _WIN32
     ULARGE_INTEGER last_kernel_time{0};
     ULARGE_INTEGER last_user_time{0};
@@ -67,6 +74,7 @@ struct PerformanceMetrics {
 #endif
 
     void Init() {
+        last_display_update_time = std::chrono::steady_clock::now();
 #ifdef _WIN32
         SYSTEM_INFO sys_info;
         GetSystemInfo(&sys_info);
@@ -88,6 +96,17 @@ struct PerformanceMetrics {
         gpu_frame_time_ms = gpu_time_ms;
         fps = current_fps;
 
+        auto now = std::chrono::steady_clock::now();
+        double display_elapsed = std::chrono::duration<double>(now - last_display_update_time).count();
+        if (display_elapsed >= 0.25 || display_fps == 0.0) {
+            display_fps = current_fps;
+            display_cpu_frame_ms = frame_time_ms;
+            display_cpu_work_ms = work_time_ms;
+            display_gpu_frame_ms = gpu_time_ms;
+            display_skipped_frames = ImGuiExt::FrameDeduplicator::Instance().GetTotalFramesSkipped();
+            last_display_update_time = now;
+        }
+
 #ifdef _WIN32
         PROCESS_MEMORY_COUNTERS_EX pmc;
         if (GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc))) {
@@ -95,7 +114,6 @@ struct PerformanceMetrics {
             ram_peak_working_set_mb = (double)pmc.PeakWorkingSetSize / (1024.0 * 1024.0);
         }
 
-        auto now = std::chrono::steady_clock::now();
         double elapsed_sec = std::chrono::duration<double>(now - last_cpu_check_time).count();
         if (elapsed_sec >= 0.5) {
             FILETIME ftCreation, ftExit, ftKernel, ftUser;
@@ -521,18 +539,10 @@ int main(int argc, char** argv) {
             if (ImGui::Checkbox("Reactive Event-Driven Loop (Stage 1)", &reactive)) {
                 ImGuiExt::SetReactiveMode(reactive);
             }
-            if (reactive) {
-                ImGui::SameLine();
-                ImGui::TextDisabled("(pending repaints: %d)", ImGuiExt::EventLoop::Instance().GetRepaintFramesLeft());
-            }
 
             bool dedup = ImGuiExt::IsFrameDeduplicationEnabled();
             if (ImGui::Checkbox("Frame Deduplication (Stage 2)", &dedup)) {
                 ImGuiExt::SetFrameDeduplication(dedup);
-            }
-            if (dedup) {
-                ImGui::SameLine();
-                ImGui::TextDisabled("(skipped %llu frames)", ImGuiExt::FrameDeduplicator::Instance().GetTotalFramesSkipped());
             }
 
             ImGui::Separator();
@@ -562,11 +572,14 @@ int main(int argc, char** argv) {
             }
 
             ImGui::Separator();
-            ImGui::Text("FPS: %.1f (Total Frame: %.2f ms)", metrics.fps, metrics.cpu_frame_time_ms);
-            ImGui::Text("CPU Work Time: %.2f ms / frame", metrics.cpu_work_time_ms);
-            ImGui::Text("GPU Frame Time: %.2f ms", metrics.gpu_frame_time_ms);
+            ImGui::Text("FPS: %.1f (Total Frame: %.2f ms)", metrics.display_fps, metrics.display_cpu_frame_ms);
+            ImGui::Text("CPU Work Time: %.2f ms / frame", metrics.display_cpu_work_ms);
+            ImGui::Text("GPU Frame Time: %.2f ms", metrics.display_gpu_frame_ms);
             ImGui::Text("CPU Usage (Process): %.2f %%", metrics.cpu_usage_percent);
             ImGui::Text("RAM Working Set: %.2f MB (Peak: %.2f MB)", metrics.ram_working_set_mb, metrics.ram_peak_working_set_mb);
+            if (dedup) {
+                ImGui::Text("Deduplication: %llu frames skipped", (unsigned long long)metrics.display_skipped_frames);
+            }
 
             ImGui::Separator();
             if (bench.running) {
@@ -602,6 +615,10 @@ int main(int argc, char** argv) {
         ImGui::Render();
         ImDrawData* draw_data = ImGui::GetDrawData();
 
+        if (use_vector_backend) {
+            ImGuiExt::Recorder::Instance().EndFrame();
+        }
+
         // Stage 2: Deduplication check
         bool frame_changed = ImGuiExt::FrameDeduplicator::Instance().ShouldRenderFrame(draw_data);
         if (!frame_changed) {
@@ -629,7 +646,6 @@ int main(int argc, char** argv) {
         }
 
         if (use_vector_backend) {
-            ImGuiExt::Recorder::Instance().EndFrame();
             vector_renderer->Resize(display_w, display_h);
             vector_renderer->RenderDrawData(draw_data);
             vector_renderer->PresentGL();

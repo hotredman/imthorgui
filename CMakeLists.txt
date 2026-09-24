@@ -74,3 +74,8 @@ add_executable(visual_diff
     tests/visual_diff.cpp
 )
 target_link_libraries(visual_diff PRIVATE imthorgui)
+
+add_executable(test_frame_dedup
+    tests/test_frame_dedup.cpp
+)
+target_link_libraries(test_frame_dedup PRIVATE imthorgui)
