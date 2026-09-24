@@ -343,6 +343,7 @@ int main(int argc, char** argv) {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.IniFilename = nullptr; // Ensure demo always starts with pristine, properly proportioned layout
 
     ImGui::StyleColorsDark();
 

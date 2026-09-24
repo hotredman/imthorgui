@@ -51,6 +51,8 @@ typedef void (APIENTRY *PFNGLDELETESHADERPROC) (GLuint shader);
 typedef GLint (APIENTRY *PFNGLGETUNIFORMLOCATIONPROC) (GLuint program, const char *name);
 typedef void (APIENTRY *PFNGLUNIFORM1IPROC) (GLint location, GLint v0);
 typedef void (APIENTRY *PFNGLACTIVETEXTUREPROC) (GLenum texture);
+typedef void (APIENTRY *PFNGLBINDATTRIBLOCATIONPROC) (GLuint program, GLuint index, const char *name);
+typedef GLint (APIENTRY *PFNGLGETATTRIBLOCATIONPROC) (GLuint program, const char *name);
 
 #define GL_FRAGMENT_SHADER 0x8B30
 #define GL_VERTEX_SHADER   0x8B31
@@ -157,6 +159,8 @@ private:
     PFNGLGETUNIFORMLOCATIONPROC m_glGetUniformLocation = nullptr;
     PFNGLUNIFORM1IPROC m_glUniform1i = nullptr;
     PFNGLACTIVETEXTUREPROC m_glActiveTexture = nullptr;
+    PFNGLBINDATTRIBLOCATIONPROC m_glBindAttribLocation = nullptr;
+    PFNGLGETATTRIBLOCATIONPROC m_glGetAttribLocation = nullptr;
 
     void ApplyClip(tvg::Paint* paint);
     void FlushCanvas();
@@ -966,6 +970,8 @@ void ThorVGRenderer::InitGLResources() {
     m_glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)glfwGetProcAddress("glGetUniformLocation");
     m_glUniform1i = (PFNGLUNIFORM1IPROC)glfwGetProcAddress("glUniform1i");
     m_glActiveTexture = (PFNGLACTIVETEXTUREPROC)glfwGetProcAddress("glActiveTexture");
+    m_glBindAttribLocation = (PFNGLBINDATTRIBLOCATIONPROC)glfwGetProcAddress("glBindAttribLocation");
+    m_glGetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)glfwGetProcAddress("glGetAttribLocation");
 
     // Texture creation
     glGenTextures(1, &m_gl_texture);
@@ -1008,7 +1014,27 @@ void ThorVGRenderer::InitGLResources() {
         m_gl_shader = m_glCreateProgram();
         m_glAttachShader(m_gl_shader, vshader);
         m_glAttachShader(m_gl_shader, fshader);
+
+        if (m_glBindAttribLocation) {
+            m_glBindAttribLocation(m_gl_shader, 0, "Position");
+            m_glBindAttribLocation(m_gl_shader, 1, "UV");
+        }
+
         m_glLinkProgram(m_gl_shader);
+
+        GLint link_status = 0;
+        m_glGetProgramiv(m_gl_shader, GL_LINK_STATUS, &link_status);
+        if (link_status == 0) {
+            char log[512];
+            m_glGetProgramInfoLog(m_gl_shader, sizeof(log), nullptr, log);
+            std::cerr << "[ThorVG GL Error] Shader link failed: " << log << "\n";
+        }
+
+        GLint loc_pos = m_glGetAttribLocation ? m_glGetAttribLocation(m_gl_shader, "Position") : 0;
+        GLint loc_uv  = m_glGetAttribLocation ? m_glGetAttribLocation(m_gl_shader, "UV") : 1;
+        if (loc_pos < 0) loc_pos = 0;
+        if (loc_uv < 0) loc_uv = 1;
+        std::cout << "[ThorVG GL Init] Attrib Location Position: " << loc_pos << ", UV: " << loc_uv << "\n";
 
         m_glDeleteShader(vshader);
         m_glDeleteShader(fshader);
@@ -1032,11 +1058,11 @@ void ThorVGRenderer::InitGLResources() {
         m_glBindBuffer(GL_ARRAY_BUFFER, m_gl_vbo);
         m_glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-        m_glEnableVertexAttribArray(0);
-        m_glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        m_glEnableVertexAttribArray(loc_pos);
+        m_glVertexAttribPointer(loc_pos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
 
-        m_glEnableVertexAttribArray(1);
-        m_glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+        m_glEnableVertexAttribArray(loc_uv);
+        m_glVertexAttribPointer(loc_uv, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
 
         m_glBindBuffer(GL_ARRAY_BUFFER, 0);
         m_glBindVertexArray(0);
@@ -1057,8 +1083,13 @@ void ThorVGRenderer::PresentGL() {
     glViewport(0, 0, m_width, m_height);
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    if (m_glBindBuffer) {
+        m_glBindBuffer(GL_ARRAY_BUFFER, 0);
+        m_glBindBuffer(0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/, 0);
+    }
 
     if (m_gl_shader && m_gl_vao) {
         // GL3 shader path
