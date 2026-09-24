@@ -1,0 +1,20 @@
+# Build artifacts
+build/
+bin/
+lib/
+out/
+
+# Visual studio / IDE files
+.vs/
+*.sln
+*.vcxproj*
+*.user
+
+# Temporary runtime files
+imgui.ini
+*.bmp
+
+# OS generated files
+Thumbs.db
+Desktop.ini
+.DS_Store
