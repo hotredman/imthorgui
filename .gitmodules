@@ -5,3 +5,6 @@
 	path = third_party/thorvg
 	url = https://github.com/thorvg/thorvg.git
 	branch = v1.0.7
+[submodule "third_party/SDL"]
+	path = third_party/SDL
+	url = https://github.com/libsdl-org/SDL.git
