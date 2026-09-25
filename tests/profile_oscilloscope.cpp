@@ -34,8 +34,9 @@ int main() {
     ImGuiExt::SetVectorInterception(true);
 
     ImGuiExt::OscilloscopeWidget widget;
-    // Let signal generate some data
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    widget.GetSignal().SetFrequency(20.0f);
+    // Let signal generate full buffer of data
+    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
 
     // Warm-up 3 frames
     for (int i = 0; i < 3; ++i) {

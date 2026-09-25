@@ -321,23 +321,23 @@ void ThorVGRenderer::StrokeLine(float x1, float y1, float x2, float y2, Color co
 
 void ThorVGRenderer::StrokePolyline(const ImVec2* points, int count, Color col, float thickness, bool closed) {
     if (col.a == 0 || count < 2) return;
-    auto shape = tvg::Shape::gen();
-    shape->moveTo(points[0].x, points[0].y);
-    for (int i = 1; i < count; ++i) {
-        shape->lineTo(points[i].x, points[i].y);
-    }
-    if (closed) shape->close();
-    shape->strokeWidth(thickness);
-    if (count > 32) {
+
+    // Draw in chunks of 32 points to avoid O(N^2) path outline calculation in ThorVG
+    const int CHUNK = 32;
+    for (int start = 0; start < count - 1; start += (CHUNK - 1)) {
+        int end = (std::min)(count - 1, start + CHUNK - 1);
+        auto shape = tvg::Shape::gen();
+        shape->moveTo(points[start].x, points[start].y);
+        for (int i = start + 1; i <= end; ++i) {
+            shape->lineTo(points[i].x, points[i].y);
+        }
+        shape->strokeWidth(thickness);
         shape->strokeCap(tvg::StrokeCap::Square);
         shape->strokeJoin(tvg::StrokeJoin::Bevel);
-    } else {
-        shape->strokeCap(tvg::StrokeCap::Round);
-        shape->strokeJoin(tvg::StrokeJoin::Round);
+        shape->strokeFill(col.r, col.g, col.b, col.a);
+        ApplyClip(shape);
+        m_canvas->add(shape);
     }
-    shape->strokeFill(col.r, col.g, col.b, col.a);
-    ApplyClip(shape);
-    m_canvas->add(shape);
 }
 
 void ThorVGRenderer::FillConvexPoly(const ImVec2* points, int count, Color col) {
