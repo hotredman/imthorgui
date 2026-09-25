@@ -31,10 +31,19 @@ if errorlevel 1 (
 )
 
 echo.
-echo [3/3] Running pixel-by-pixel visual diff tool...
+echo [3/4] Running pixel-by-pixel visual diff tool...
 "build\Release\visual_diff.exe"
 if errorlevel 1 (
     echo [ERROR] Visual diff test failed!
+    pause
+    exit /b 1
+)
+
+echo.
+echo [4/4] Running LTTB downsampling validation...
+"build\Release\test_lttb.exe"
+if errorlevel 1 (
+    echo [ERROR] LTTB test failed!
     pause
     exit /b 1
 )

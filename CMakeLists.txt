@@ -70,3 +70,8 @@ add_executable(test_frame_dedup
     tests/test_frame_dedup.cpp
 )
 target_link_libraries(test_frame_dedup PRIVATE imthorgui)
+
+add_executable(test_lttb
+    tests/test_lttb.cpp
+)
+target_link_libraries(test_lttb PRIVATE imthorgui)

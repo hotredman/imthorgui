@@ -22,6 +22,7 @@
 #include "imgui_ext/frame_dedup.h"
 #include "imgui_ext/recorder.h"
 #include "imgui_ext/renderer.h"
+#include "imgui_ext/oscilloscope.h"
 
 struct PerformanceMetrics {
     double cpu_usage_percent = 0.0;
@@ -372,6 +373,11 @@ int main(int argc, char* argv[]) {
     metrics.Init();
     BenchmarkSession bench;
 
+    ImGuiExt::OscilloscopeWidget oscilloscope;
+    if (auto_benchmark) {
+        oscilloscope.GetSignal().SetPaused(true);
+    }
+
     int auto_bench_stage = auto_benchmark ? 1 : 0;
     auto bench_stage_timer = std::chrono::steady_clock::now();
 
@@ -496,10 +502,18 @@ int main(int argc, char* argv[]) {
         float demo_w = total_w - demo_x - pad;
         float demo_h = total_h - pad * 2.0f;
 
-        // 1. Show standard ImGui Demo
+        // 1. Show standard ImGui Demo (top-right)
+        float half_h = (demo_h - pad) * 0.48f;
+        float osc_h = demo_h - half_h - pad;
+
         ImGui::SetNextWindowPos(ImVec2(demo_x, pad), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(demo_w, demo_h), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(demo_w, half_h), ImGuiCond_FirstUseEver);
         ImGui::ShowDemoWindow();
+
+        // 2. Real-Time Oscilloscope Widget with LTTB (bottom-right)
+        ImGui::SetNextWindowPos(ImVec2(demo_x, pad + half_h + pad), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(demo_w, osc_h), ImGuiCond_FirstUseEver);
+        oscilloscope.RenderUI();
 
         // 2. Metrics & Benchmark HUD
         {
@@ -580,7 +594,9 @@ int main(int argc, char* argv[]) {
                     ImGui::SetWindowPos("ImGui Vector Backend - Controls & Metrics", ImVec2(pad, pad));
                     ImGui::SetWindowSize("ImGui Vector Backend - Controls & Metrics", ImVec2(hud_w, hud_h));
                     ImGui::SetWindowPos("Dear ImGui Demo", ImVec2(demo_x, pad));
-                    ImGui::SetWindowSize("Dear ImGui Demo", ImVec2(demo_w, demo_h));
+                    ImGui::SetWindowSize("Dear ImGui Demo", ImVec2(demo_w, half_h));
+                    ImGui::SetWindowPos("Real-Time Oscilloscope & Signal Monitor", ImVec2(demo_x, pad + half_h + pad));
+                    ImGui::SetWindowSize("Real-Time Oscilloscope & Signal Monitor", ImVec2(demo_w, osc_h));
                 }
             }
             ImGui::End();
