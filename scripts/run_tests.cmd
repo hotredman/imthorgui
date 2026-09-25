@@ -40,10 +40,19 @@ if errorlevel 1 (
 )
 
 echo.
-echo [4/4] Running LTTB downsampling validation...
+echo [4/5] Running LTTB downsampling validation...
 "build\Release\test_lttb.exe"
 if errorlevel 1 (
     echo [ERROR] LTTB test failed!
+    pause
+    exit /b 1
+)
+
+echo.
+echo [5/5] Running modal dimming order validation...
+"build\Release\test_modal.exe"
+if errorlevel 1 (
+    echo [ERROR] Modal dimming test failed!
     pause
     exit /b 1
 )

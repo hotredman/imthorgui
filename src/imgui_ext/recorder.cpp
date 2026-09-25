@@ -61,6 +61,66 @@ void Recorder::EndFrame() {
     for (auto& kv : m_streams) {
         ImDrawList* dl = kv.first;
         FlushFallbackMesh(dl);
+        auto& stream = kv.second;
+
+        // Detect if Dear ImGui rendered a modal or nav window dimmed background
+        // (RenderDimmedBackgroundBehindWindow) into this draw list.
+        // ImGui appends PushClipRect(viewport +/- 1), AddRectFilled(viewport), PopClipRect
+        // to the end of the draw list, and then moves the ImDrawCmd to the front of CmdBuffer.
+        // Because ThorVG executes commands from stream.commands, we move those trailing
+        // dimming vector commands to the front of stream.commands so the background is drawn
+        // behind the window contents rather than over them.
+        if (!stream.modal_dim_reordered && stream.commands.size() >= 3) {
+            size_t n = stream.commands.size();
+            const auto& cmd_pop  = stream.commands[n - 1];
+            const auto& cmd_rect = stream.commands[n - 2];
+            const auto& cmd_push = stream.commands[n - 3];
+
+            if (cmd_pop.type == CmdType::PopClipRect &&
+                cmd_rect.type == CmdType::RectFilled &&
+                cmd_push.type == CmdType::PushClipRect) {
+
+                ImGuiViewport* vp = ImGui::GetMainViewport();
+                if (vp) {
+                    float vp_x1 = vp->Pos.x;
+                    float vp_y1 = vp->Pos.y;
+                    float vp_x2 = vp->Pos.x + vp->Size.x;
+                    float vp_y2 = vp->Pos.y + vp->Size.y;
+
+                    bool rect_matches_vp = std::abs(cmd_rect.p1.x - vp_x1) <= 1.0f &&
+                                           std::abs(cmd_rect.p1.y - vp_y1) <= 1.0f &&
+                                           std::abs(cmd_rect.p2.x - vp_x2) <= 1.0f &&
+                                           std::abs(cmd_rect.p2.y - vp_y2) <= 1.0f;
+
+                    bool clip_matches_vp = std::abs(cmd_push.clip_rect.x - (vp_x1 - 1.0f)) <= 1.0f &&
+                                           std::abs(cmd_push.clip_rect.y - (vp_y1 - 1.0f)) <= 1.0f &&
+                                           std::abs(cmd_push.clip_rect.z - (vp_x2 + 1.0f)) <= 1.0f &&
+                                           std::abs(cmd_push.clip_rect.w - (vp_y2 + 1.0f)) <= 1.0f;
+
+                    if (rect_matches_vp && clip_matches_vp) {
+                        DrawCommand dim_push = cmd_push;
+                        DrawCommand dim_rect = cmd_rect;
+                        DrawCommand dim_pop  = cmd_pop;
+
+                        stream.commands.erase(stream.commands.end() - 3, stream.commands.end());
+
+                        // Insert after any initial PushTexture commands to preserve font atlas state
+                        auto it = stream.commands.begin();
+                        while (it != stream.commands.end() && it->type == CmdType::PushTexture) {
+                            ++it;
+                        }
+
+                        it = stream.commands.insert(it, dim_push);
+                        ++it;
+                        it = stream.commands.insert(it, dim_rect);
+                        ++it;
+                        stream.commands.insert(it, dim_pop);
+
+                        stream.modal_dim_reordered = true;
+                    }
+                }
+            }
+        }
     }
 }
 

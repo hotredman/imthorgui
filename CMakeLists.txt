@@ -80,3 +80,9 @@ add_executable(profile_oscilloscope
     tests/profile_oscilloscope.cpp
 )
 target_link_libraries(profile_oscilloscope PRIVATE imthorgui)
+
+add_executable(test_modal
+    tests/test_modal.cpp
+)
+target_link_libraries(test_modal PRIVATE imthorgui)
+

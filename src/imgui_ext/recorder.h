@@ -99,6 +99,9 @@ struct DrawListStream {
     // Clip rect tracking
     std::vector<ImVec4> clip_stack;
 
+    // Modal dimming reorder tracking
+    bool modal_dim_reordered = false;
+
     void Reset() {
         commands.clear();
         points_pool.clear();
@@ -108,6 +111,7 @@ struct DrawListStream {
         last_recorded_vtx_count = 0;
         last_recorded_idx_count = 0;
         clip_stack.clear();
+        modal_dim_reordered = false;
     }
 
     std::vector<DrawCommand>& GetCurrentCmdList() {
