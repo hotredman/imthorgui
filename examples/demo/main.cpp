@@ -294,6 +294,8 @@ int main(int argc, char* argv[]) {
             auto_benchmark = true;
         } else if (std::string(argv[i]) == "--profile" && i + 1 < argc) {
             auto_exit_seconds = std::atof(argv[++i]);
+        } else if (std::string(argv[i]) == "--software") {
+            SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
         }
     }
 
@@ -334,7 +336,9 @@ int main(int argc, char* argv[]) {
     float window_scale = SDL_GetWindowDisplayScale(window);
     if (window_scale > 0.0f) main_scale = window_scale;
 
-    std::cout << "[Demo] Content Scale: " << main_scale << ", Window Size: " << base_w << "x" << base_h << "\n";
+    std::cout << "[Demo] Content Scale: " << main_scale << ", Window Size: " << base_w << "x" << base_h
+              << " | SDL Presentation Driver: " << (renderer ? SDL_GetRendererName(renderer) : "None")
+              << " | Vector Rasterizer: ThorVG CPU SwCanvas\n";
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
