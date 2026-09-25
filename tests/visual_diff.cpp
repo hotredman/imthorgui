@@ -13,12 +13,12 @@
 #endif
 #endif
 
-#include <GL/gl.h>
-#include <GLFW/glfw3.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 
 #include "imgui.h"
-#include "backends/imgui_impl_glfw.h"
-#include "backends/imgui_impl_opengl3.h"
+#include "backends/imgui_impl_sdl3.h"
+#include "backends/imgui_impl_sdlrenderer3.h"
 
 #include "imgui_ext/recorder.h"
 #include "imgui_ext/renderer.h"
@@ -45,13 +45,13 @@ struct BMPHeader {
 };
 #pragma pack(pop)
 
-static bool SaveBMP(const char* filename, const uint32_t* pixels, int width, int height, bool flip_y = false) {
+static bool SaveBMP(const char* filename, const uint32_t* pixels, int width, int height, bool flip_y = true) {
     std::ofstream out(filename, std::ios::binary);
     if (!out) return false;
 
     BMPHeader header;
     header.width = width;
-    header.height = height; // positive = bottom-up, negative = top-down
+    header.height = height; // positive = bottom-up
     header.size_image = width * height * 4;
     header.file_size = sizeof(BMPHeader) + header.size_image;
 
@@ -66,36 +66,35 @@ static bool SaveBMP(const char* filename, const uint32_t* pixels, int width, int
     return true;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    (void)argc;
+    (void)argv;
+
     std::cout << "========================================================\n";
-    std::cout << " Stage 3: Visual Comparison & Screenshot Diff Tool\n";
+    std::cout << " Stage 3: Visual Comparison & Screenshot Diff Tool (SDL3)\n";
     std::cout << "========================================================\n\n";
 
-    if (!glfwInit()) {
-        std::cerr << "[ERROR] Failed to initialize GLFW\n";
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        std::cerr << "[ERROR] Failed to initialize SDL: " << SDL_GetError() << "\n";
         return 1;
     }
-
-    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
     const int width = 1280;
     const int height = 720;
-    GLFWwindow* window = glfwCreateWindow(width, height, "Visual Diff Headless", nullptr, nullptr);
-    if (!window) {
-        std::cerr << "[ERROR] Failed to create offscreen GLFW window\n";
-        glfwTerminate();
+    SDL_Window* window = nullptr;
+    SDL_Renderer* renderer = nullptr;
+
+    if (!SDL_CreateWindowAndRenderer("Visual Diff Headless", width, height, SDL_WINDOW_HIDDEN, &window, &renderer)) {
+        std::cerr << "[ERROR] Failed to create offscreen SDL window/renderer: " << SDL_GetError() << "\n";
+        SDL_Quit();
         return 1;
     }
-
-    glfwMakeContextCurrent(window);
-    glViewport(0, 0, width, height);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2((float)width, (float)height);
+    io.IniFilename = nullptr;
 
     ImGui::StyleColorsDark();
 
@@ -105,8 +104,8 @@ int main() {
     cfg.OversampleV = 1;
     io.Fonts->AddFontFromFileTTF(font_path, 18.0f, &cfg, io.Fonts->GetGlyphRangesCyrillic());
 
-    ImGui_ImplGlfw_InitForOpenGL(window, false);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
+    ImGui_ImplSDLRenderer3_Init(renderer);
 
     ImGuiExt::IRenderer* vector_renderer = ImGuiExt::CreateThorVGRenderer();
     vector_renderer->Init(width, height);
@@ -114,44 +113,50 @@ int main() {
 
     // Warm-up 3 frames so ImGui window sizes and positions settle
     for (int i = 0; i < 3; ++i) {
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
+        ImGui_ImplSDLRenderer3_NewFrame();
+        ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
         ImGui::ShowDemoWindow();
         ImGui::Render();
         ImGuiExt::Recorder::Instance().Reset();
     }
 
-    // 1. Capture Stock OpenGL3 render
+    // 1. Capture Stock SDL_Renderer render
     ImGuiExt::SetVectorInterception(false);
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
+    ImGui_ImplSDLRenderer3_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
     ImGui::ShowDemoWindow();
     ImGui::Render();
 
     ImDrawData* stock_draw_data = ImGui::GetDrawData();
 
-    glClearColor(0.12f, 0.12f, 0.14f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    ImGui_ImplOpenGL3_RenderDrawData(stock_draw_data);
-    glFinish();
+    SDL_SetRenderDrawColor(renderer, 31, 31, 36, 255);
+    SDL_RenderClear(renderer);
+    ImGui_ImplSDLRenderer3_RenderDrawData(stock_draw_data, renderer);
 
-    std::vector<uint32_t> stock_pixels(width * height);
-    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, stock_pixels.data());
-
-    // Flip Y to top-down
-    std::vector<uint32_t> stock_topdown(width * height);
-    for (int y = 0; y < height; ++y) {
-        memcpy(&stock_topdown[y * width], &stock_pixels[(height - 1 - y) * width], width * 4);
+    SDL_Surface* stock_surface = SDL_RenderReadPixels(renderer, nullptr);
+    if (!stock_surface) {
+        std::cerr << "[ERROR] SDL_RenderReadPixels failed: " << SDL_GetError() << "\n";
+        return 1;
     }
+
+    SDL_Surface* stock_rgba = SDL_ConvertSurface(stock_surface, SDL_PIXELFORMAT_RGBA32);
+    std::vector<uint32_t> stock_pixels(width * height);
+    for (int y = 0; y < height; ++y) {
+        memcpy(&stock_pixels[y * width], ((const uint8_t*)stock_rgba->pixels) + y * stock_rgba->pitch, width * 4);
+    }
+    if (stock_rgba != stock_surface) {
+        SDL_DestroySurface(stock_rgba);
+    }
+    SDL_DestroySurface(stock_surface);
 
     // 2. Capture ThorVG Vector Backend render
     ImGuiExt::SetVectorInterception(true);
     ImGuiExt::Recorder::Instance().Reset();
 
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
+    ImGui_ImplSDLRenderer3_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
     ImGui::ShowDemoWindow();
     ImGui::Render();
@@ -174,11 +179,11 @@ int main() {
     float total_diff_sum = 0.0f;
     int max_channel_diff = 0;
 
-    std::cout << std::hex << "Stock pixel[0]: 0x" << stock_topdown[0] << ", ThorVG pixel[0]: 0x" << thorvg_pixels[0] << std::dec << "\n";
+    std::cout << std::hex << "Stock pixel[0]: 0x" << stock_pixels[0] << ", ThorVG pixel[0]: 0x" << thorvg_pixels[0] << std::dec << "\n";
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            uint32_t p_stock = stock_topdown[y * width + x];
+            uint32_t p_stock = stock_pixels[y * width + x];
             uint32_t p_thor = thorvg_pixels[y * width + x];
 
             uint8_t r1 = p_stock & 0xFF, g1 = (p_stock >> 8) & 0xFF, b1 = (p_stock >> 16) & 0xFF;
@@ -196,11 +201,9 @@ int main() {
                 exact_match++;
             } else if (cur_max <= 32) {
                 aa_tolerance_match++;
-                // Slight green tint for sub-pixel AA variance
-                diff_pixels[y * width + x] = 0xFF003300 | ((uint32_t)cur_max << 8);
+                diff_pixels[y * width + x] = 0xFF003300 | ((uint32_t)cur_max << 8); // subtle green
             } else {
                 perceptible_diff++;
-                // Highlight discrepancy in magenta/red for visual inspection
                 uint8_t highlight = (uint8_t)(std::min)(255, cur_max * 2);
                 diff_pixels[y * width + x] = 0xFF000000 | ((uint32_t)highlight << 16) | highlight; // Red/magenta
             }
@@ -212,7 +215,7 @@ int main() {
     double avg_diff = total_diff_sum / (double)total_pixels;
 
     // Save screenshots and diff map
-    SaveBMP("stock_render.bmp", stock_topdown.data(), width, height, true);
+    SaveBMP("stock_render.bmp", stock_pixels.data(), width, height, true);
     SaveBMP("thorvg_render.bmp", thorvg_pixels.data(), width, height, true);
     SaveBMP("diff_map.bmp", diff_pixels.data(), width, height, true);
 
@@ -236,11 +239,11 @@ int main() {
     {
         std::ofstream report("docs/discrepancies.md");
         if (report) {
-            report << "# Отчёт о визуальном сравнении (Stock OpenGL3 vs ThorVG Vector Backend)\n\n";
+            report << "# Отчёт о визуальном сравнении (Stock SDL_Renderer vs ThorVG Vector Backend)\n\n";
             report << "## 1. Методика сравнения\n";
             report << "- Тестовое окно: `ImGui::ShowDemoWindow()` в разрешении 1280x720.\n";
             report << "- Захват двух кадров:\n";
-            report << "  1. Стоковый рендер ImGui (`ImGui_ImplOpenGL3_RenderDrawData`) в OpenGL буфер кадра;\n";
+            report << "  1. Стоковый рендер ImGui (`ImGui_ImplSDLRenderer3_RenderDrawData`) через `SDL_Renderer`;\n";
             report << "  2. Векторный рендер ThorVG (`ThorVGRenderer::RenderDrawData`) через перехват примитивов `ImDrawList`.\n";
             report << "- Попиксельный расчёт различий по каналам RGB с допуском на разницу антиалиасинга (сглаживание контуров).\n\n";
 
@@ -267,7 +270,7 @@ int main() {
             report << "   - Артефактов наложения или утери элементов интерфейса не обнаружено.\n\n";
 
             report << "## 4. Сгенерированные файлы артефактов\n";
-            report << "- `stock_render.bmp` — скриншот стокового рендерера OpenGL3.\n";
+            report << "- `stock_render.bmp` — скриншот стокового рендерера SDL_Renderer.\n";
             report << "- `thorvg_render.bmp` — скриншот векторного рендерера ThorVG.\n";
             report << "- `diff_map.bmp` — цветовая карта различий (зелёный = зона AA, красный = расхождения).\n";
             std::cout << "Отчёт успешно записан в docs/discrepancies.md\n";
@@ -278,12 +281,13 @@ int main() {
     vector_renderer->Shutdown();
     delete vector_renderer;
 
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
+    ImGui_ImplSDLRenderer3_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
 
-    glfwDestroyWindow(window);
-    glfwTerminate();
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
 
     if (match_pct >= 90.0) {
         std::cout << "\n>>> [PASS] Визуальное соответствие подтверждено (" << match_pct << "% >= 90%)!\n\n";

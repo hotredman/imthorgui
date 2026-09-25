@@ -1,9 +1,9 @@
-# Отчёт о визуальном сравнении (Stock OpenGL3 vs ThorVG Vector Backend)
+# Отчёт о визуальном сравнении (Stock SDL_Renderer vs ThorVG Vector Backend)
 
 ## 1. Методика сравнения
 - Тестовое окно: `ImGui::ShowDemoWindow()` в разрешении 1280x720.
 - Захват двух кадров:
-  1. Стоковый рендер ImGui (`ImGui_ImplOpenGL3_RenderDrawData`) в OpenGL буфер кадра;
+  1. Стоковый рендер ImGui (`ImGui_ImplSDLRenderer3_RenderDrawData`) через `SDL_Renderer`;
   2. Векторный рендер ThorVG (`ThorVGRenderer::RenderDrawData`) через перехват примитивов `ImDrawList`.
 - Попиксельный расчёт различий по каналам RGB с допуском на разницу антиалиасинга (сглаживание контуров).
 
@@ -34,6 +34,6 @@
    - Артефактов наложения или утери элементов интерфейса не обнаружено.
 
 ## 4. Сгенерированные файлы артефактов
-- `stock_render.bmp` — скриншот стокового рендерера OpenGL3.
+- `stock_render.bmp` — скриншот стокового рендерера SDL_Renderer.
 - `thorvg_render.bmp` — скриншот векторного рендерера ThorVG.
 - `diff_map.bmp` — цветовая карта различий (зелёный = зона AA, красный = расхождения).

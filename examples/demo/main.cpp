@@ -11,44 +11,17 @@
 #include <psapi.h>
 #endif
 
-#include <GL/gl.h>
-#include <GLFW/glfw3.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 
 #include "imgui.h"
-#include "backends/imgui_impl_glfw.h"
-#include "backends/imgui_impl_opengl3.h"
+#include "backends/imgui_impl_sdl3.h"
+#include "backends/imgui_impl_sdlrenderer3.h"
 
 #include "imgui_ext/event_loop.h"
 #include "imgui_ext/frame_dedup.h"
 #include "imgui_ext/recorder.h"
 #include "imgui_ext/renderer.h"
-
-// OpenGL typedefs for GL_TIME_ELAPSED queries
-#define GL_TIME_ELAPSED 0x88BF
-#define GL_QUERY_RESULT 0x8866
-typedef unsigned __int64 GLuint64;
-typedef void (APIENTRY *PFNGLGENQUERIESPROC) (GLsizei n, GLuint *ids);
-typedef void (APIENTRY *PFNGLDELETEQUERIESPROC) (GLsizei n, const GLuint *ids);
-typedef void (APIENTRY *PFNGLBEGINQUERYPROC) (GLenum target, GLuint id);
-typedef void (APIENTRY *PFNGLENDQUERYPROC) (GLenum target);
-typedef void (APIENTRY *PFNGLGETQUERYOBJECTUI64VPROC) (GLuint id, GLenum pname, GLuint64 *params);
-typedef void (APIENTRY *PFNGLGETQUERYOBJECTUIVPROC) (GLuint id, GLenum pname, GLuint *params);
-
-static PFNGLGENQUERIESPROC glGenQueriesPtr = nullptr;
-static PFNGLDELETEQUERIESPROC glDeleteQueriesPtr = nullptr;
-static PFNGLBEGINQUERYPROC glBeginQueryPtr = nullptr;
-static PFNGLENDQUERYPROC glEndQueryPtr = nullptr;
-static PFNGLGETQUERYOBJECTUI64VPROC glGetQueryObjectui64vPtr = nullptr;
-static PFNGLGETQUERYOBJECTUIVPROC glGetQueryObjectuivPtr = nullptr;
-
-static void InitGLQueries() {
-    glGenQueriesPtr = (PFNGLGENQUERIESPROC)glfwGetProcAddress("glGenQueries");
-    glDeleteQueriesPtr = (PFNGLDELETEQUERIESPROC)glfwGetProcAddress("glDeleteQueries");
-    glBeginQueryPtr = (PFNGLBEGINQUERYPROC)glfwGetProcAddress("glBeginQuery");
-    glEndQueryPtr = (PFNGLENDQUERYPROC)glfwGetProcAddress("glEndQuery");
-    glGetQueryObjectui64vPtr = (PFNGLGETQUERYOBJECTUI64VPROC)glfwGetProcAddress("glGetQueryObjectui64v");
-    glGetQueryObjectuivPtr = (PFNGLGETQUERYOBJECTUIVPROC)glfwGetProcAddress("glGetQueryObjectuiv");
-}
 
 struct PerformanceMetrics {
     double cpu_usage_percent = 0.0;
@@ -281,7 +254,7 @@ struct BenchmarkSession {
         std::cout << " Total Frame Time:  " << avg_totaltime << " ms/frame\n";
         std::cout << " Thread CPU Time:   " << thread_cpu_time_ms << " ms total (" << thread_cpu_percent << "% of 1 core)\n";
         std::cout << " Process CPU Usage: " << avg_cpu << " % (All cores)\n";
-        std::cout << " GPU Frame Time:    " << avg_gputime << " ms\n";
+        std::cout << " Render/Present:    " << avg_gputime << " ms\n";
         std::cout << " RAM Working Set:   " << avg_ram << " MB\n";
         std::cout << "=========================================\n" << std::endl;
     }
@@ -289,7 +262,7 @@ struct BenchmarkSession {
     void PrintSummaryMarkdown() {
         if (all_results.empty()) return;
         std::cout << "\n### Comparative Benchmark Summary\n\n";
-        std::cout << "| Режим / Сценарий | Кадров за 5с | FPS | CPU Work (мс/кадр) | Время потока CPU | Загрузка 1 ядра | GPU Time | RAM |\n";
+        std::cout << "| Режим / Сценарий | Кадров за 5с | FPS | CPU Work (мс/кадр) | Время потока CPU | Загрузка 1 ядра | Render/Present | RAM |\n";
         std::cout << "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n";
         for (const auto& r : all_results) {
             std::cout << "| " << r.name << " | **" << r.frames_rendered << "** | "
@@ -304,11 +277,7 @@ struct BenchmarkSession {
     }
 };
 
-static void glfw_error_callback(int error, const char* description) {
-    std::cerr << "GLFW Error " << error << ": " << description << std::endl;
-}
-
-int main(int argc, char** argv) {
+int main(int argc, char* argv[]) {
     bool auto_benchmark = false;
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--benchmark") {
@@ -316,50 +285,48 @@ int main(int argc, char** argv) {
         }
     }
 
-    glfwSetErrorCallback(glfw_error_callback);
-    if (!glfwInit())
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        std::cerr << "Failed to initialize SDL: " << SDL_GetError() << std::endl;
         return 1;
+    }
 
-    // GL 3.0 + GLSL 130
-    const char* glsl_version = "#version 130";
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-
-    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-    float main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor(monitor);
+    SDL_DisplayID display_id = SDL_GetPrimaryDisplay();
+    float main_scale = SDL_GetDisplayContentScale(display_id);
     if (main_scale <= 0.0f) main_scale = 1.0f;
 
-    int mon_x = 0, mon_y = 0, mon_w = 1280, mon_h = 720;
-    glfwGetMonitorWorkarea(monitor, &mon_x, &mon_y, &mon_w, &mon_h);
+    SDL_Rect work_area{0, 0, 1280, 720};
+    SDL_GetDisplayUsableBounds(display_id, &work_area);
 
-    // Compute comfortable window dimensions fitting within monitor work area
+    int mon_w = work_area.w > 0 ? work_area.w : 1280;
+    int mon_h = work_area.h > 0 ? work_area.h : 720;
+
     int base_w = (std::min)(mon_w - 40, (int)(1360 * (main_scale > 1.25f ? 1.0f : main_scale)));
     int base_h = (std::min)(mon_h - 60, (int)(800 * (main_scale > 1.25f ? 1.0f : main_scale)));
     if (base_w < 1024) base_w = (std::min)(1024, mon_w - 20);
     if (base_h < 640)  base_h = (std::min)(640, mon_h - 40);
 
-    GLFWwindow* window = glfwCreateWindow(base_w, base_h, "ImGui Vector Backend - ThorVG Demo", nullptr, nullptr);
-    if (window == nullptr)
+    SDL_Window* window = nullptr;
+    SDL_Renderer* renderer = nullptr;
+    if (!SDL_CreateWindowAndRenderer("ImGui Vector Backend - ThorVG + SDL3 Demo",
+                                     base_w, base_h,
+                                     SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY,
+                                     &window, &renderer)) {
+        std::cerr << "Failed to create SDL window and renderer: " << SDL_GetError() << std::endl;
+        SDL_Quit();
         return 1;
-    glfwSetWindowPos(window, mon_x + (mon_w - base_w) / 2, mon_y + (mon_h - base_h) / 2);
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1); // Enable vsync (60Hz) as standard baseline
+    }
 
-    float window_scale = ImGui_ImplGlfw_GetContentScaleForWindow(window);
+    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    SDL_SetRenderVSync(renderer, 1); // Enable vsync (60Hz baseline)
+
+    float window_scale = SDL_GetWindowDisplayScale(window);
     if (window_scale > 0.0f) main_scale = window_scale;
 
-    std::cout << "[Demo] Monitor Content Scale: " << main_scale << ", Window Size: " << base_w << "x" << base_h << "\n";
-
-    InitGLQueries();
-
-    GLuint gl_query = 0;
-    if (glGenQueriesPtr) {
-        glGenQueriesPtr(1, &gl_query);
-    }
+    std::cout << "[Demo] Content Scale: " << main_scale << ", Window Size: " << base_w << "x" << base_h << "\n";
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename = nullptr; // Ensure demo always starts with pristine, properly proportioned layout
 
@@ -382,21 +349,24 @@ int main(int argc, char** argv) {
         font = io.Fonts->AddFontFromFileTTF(font_path, font_size, &cfg, io.Fonts->GetGlyphRangesCyrillic());
     }
 
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glsl_version);
+    ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
+    ImGui_ImplSDLRenderer3_Init(renderer);
 
     // Initialize Event Loop manager
     ImGuiExt::InitEventLoop(window);
 
     ImGuiExt::IRenderer* vector_renderer = ImGuiExt::CreateThorVGRenderer();
     int init_fb_w = 0, init_fb_h = 0;
-    glfwGetFramebufferSize(window, &init_fb_w, &init_fb_h);
+    SDL_GetRenderOutputSize(renderer, &init_fb_w, &init_fb_h);
     vector_renderer->Init(init_fb_w, init_fb_h);
     if (font) {
         vector_renderer->LoadFontFile(font_path);
     }
     bool use_vector_backend = true;
     ImGuiExt::SetVectorInterception(use_vector_backend);
+
+    SDL_Texture* vector_texture = nullptr;
+    int texture_w = 0, texture_h = 0;
 
     PerformanceMetrics metrics;
     metrics.Init();
@@ -405,7 +375,7 @@ int main(int argc, char** argv) {
     int auto_bench_stage = auto_benchmark ? 1 : 0;
     auto bench_stage_timer = std::chrono::steady_clock::now();
 
-    while (!glfwWindowShouldClose(window)) {
+    while (!ImGuiExt::EventLoop::Instance().ShouldClose()) {
         auto frame_start = std::chrono::steady_clock::now();
 
         // Automated benchmark sequencer
@@ -427,7 +397,7 @@ int main(int argc, char** argv) {
                 double t = std::chrono::duration<double>(now - bench_stage_timer).count() * 4.0;
                 double mx = (640.0 + 300.0 * std::sin(t)) * main_scale;
                 double my = (360.0 + 200.0 * std::cos(t)) * main_scale;
-                glfwSetCursorPos(window, mx, my);
+                SDL_WarpMouseInWindow(window, (float)mx, (float)my);
                 ImGuiExt::RequestRepaint(3);
                 if (!bench.running) {
                     // Transition to Stage 1
@@ -445,7 +415,7 @@ int main(int argc, char** argv) {
                 double t = std::chrono::duration<double>(now - bench_stage_timer).count() * 4.0;
                 double mx = (640.0 + 300.0 * std::sin(t)) * main_scale;
                 double my = (360.0 + 200.0 * std::cos(t)) * main_scale;
-                glfwSetCursorPos(window, mx, my);
+                SDL_WarpMouseInWindow(window, (float)mx, (float)my);
                 ImGuiExt::RequestRepaint(3);
                 if (!bench.running) {
                     // Transition to Stage 2 (Reactive + Dedup)
@@ -463,7 +433,7 @@ int main(int argc, char** argv) {
                 double t = std::chrono::duration<double>(now - bench_stage_timer).count() * 4.0;
                 double mx = (640.0 + 300.0 * std::sin(t)) * main_scale;
                 double my = (360.0 + 200.0 * std::cos(t)) * main_scale;
-                glfwSetCursorPos(window, mx, my);
+                SDL_WarpMouseInWindow(window, (float)mx, (float)my);
                 ImGuiExt::RequestRepaint(3);
                 if (!bench.running) {
                     // Transition to Stage 3 (ThorVG Vector Backend - Idle)
@@ -482,13 +452,13 @@ int main(int argc, char** argv) {
                 double t = std::chrono::duration<double>(now - bench_stage_timer).count() * 4.0;
                 double mx = (640.0 + 300.0 * std::sin(t)) * main_scale;
                 double my = (360.0 + 200.0 * std::cos(t)) * main_scale;
-                glfwSetCursorPos(window, mx, my);
+                SDL_WarpMouseInWindow(window, (float)mx, (float)my);
                 ImGuiExt::RequestRepaint(3);
                 if (!bench.running) {
                     auto_bench_stage = 10;
                     std::cout << "All automated benchmarks complete!\n";
                     bench.PrintSummaryMarkdown();
-                    glfwSetWindowShouldClose(window, GLFW_TRUE);
+                    ImGuiExt::EventLoop::Instance().SetShouldClose(true);
                 }
             }
         }
@@ -496,6 +466,10 @@ int main(int argc, char** argv) {
         // Wait / Poll events according to event loop configuration
         bool want_text = io.WantTextInput;
         bool should_render = ImGuiExt::EventLoop::Instance().StepBeforeWait(want_text, false, bench.running);
+
+        if (ImGuiExt::EventLoop::Instance().ShouldClose()) {
+            break;
+        }
 
         if (!should_render) {
             auto now = std::chrono::steady_clock::now();
@@ -507,8 +481,8 @@ int main(int argc, char** argv) {
 
         auto cpu_work_start = std::chrono::steady_clock::now();
 
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
+        ImGui_ImplSDLRenderer3_NewFrame();
+        ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
 
         // Responsive side-by-side layout
@@ -532,7 +506,7 @@ int main(int argc, char** argv) {
             ImGui::SetNextWindowPos(ImVec2(pad, pad), ImGuiCond_FirstUseEver);
             ImGui::SetNextWindowSize(ImVec2(hud_w, hud_h), ImGuiCond_FirstUseEver);
             ImGui::Begin("ImGui Vector Backend - Controls & Metrics", nullptr);
-            ImGui::Text("Dear ImGui %s", IMGUI_VERSION);
+            ImGui::Text("Dear ImGui %s + SDL3", IMGUI_VERSION);
             ImGui::Separator();
 
             bool reactive = ImGuiExt::IsReactiveMode();
@@ -564,7 +538,7 @@ int main(int argc, char** argv) {
                 ImGui::Text("Recorded: %zu commands (%zu vector, %zu fallback mesh)", total_cmds, vector_cmds, fallback_cmds);
             } else {
                 ImGui::SameLine();
-                ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "[Stock OpenGL3 Triangles]");
+                ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "[Stock SDL_Renderer Triangles]");
             }
 
             if (ImGui::Button("Simulate Texture Update")) {
@@ -574,7 +548,7 @@ int main(int argc, char** argv) {
             ImGui::Separator();
             ImGui::Text("FPS: %.1f (Total Frame: %.2f ms)", metrics.display_fps, metrics.display_cpu_frame_ms);
             ImGui::Text("CPU Work Time: %.2f ms / frame", metrics.display_cpu_work_ms);
-            ImGui::Text("GPU Frame Time: %.2f ms", metrics.display_gpu_frame_ms);
+            ImGui::Text("Render/Present: %.2f ms", metrics.display_gpu_frame_ms);
             ImGui::Text("CPU Usage (Process): %.2f %%", metrics.cpu_usage_percent);
             ImGui::Text("RAM Working Set: %.2f MB (Peak: %.2f MB)", metrics.ram_working_set_mb, metrics.ram_peak_working_set_mb);
             if (dedup) {
@@ -622,7 +596,6 @@ int main(int argc, char** argv) {
         // Stage 2: Deduplication check
         bool frame_changed = ImGuiExt::FrameDeduplicator::Instance().ShouldRenderFrame(draw_data);
         if (!frame_changed) {
-            // Identical frame: skip glClear, RenderDrawData, and glfwSwapBuffers
             auto cpu_work_end = std::chrono::steady_clock::now();
             double cpu_work_time_ms = std::chrono::duration<double, std::milli>(cpu_work_end - cpu_work_start).count();
             auto frame_end = std::chrono::steady_clock::now();
@@ -635,40 +608,43 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        int display_w, display_h;
-        glfwGetFramebufferSize(window, &display_w, &display_h);
-        glViewport(0, 0, display_w, display_h);
-        glClearColor(0.12f, 0.12f, 0.14f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        int display_w = 0, display_h = 0;
+        SDL_GetRenderOutputSize(renderer, &display_w, &display_h);
 
-        if (glBeginQueryPtr && gl_query) {
-            glBeginQueryPtr(GL_TIME_ELAPSED, gl_query);
-        }
+        auto render_start = std::chrono::steady_clock::now();
+
+        SDL_SetRenderDrawColor(renderer, 31, 31, 36, 255);
+        SDL_RenderClear(renderer);
 
         if (use_vector_backend) {
             vector_renderer->Resize(display_w, display_h);
             vector_renderer->RenderDrawData(draw_data);
-            vector_renderer->PresentGL();
-        } else {
-            ImGui_ImplOpenGL3_RenderDrawData(draw_data);
-        }
+            const uint32_t* pixels = vector_renderer->GetPixelBuffer();
 
-        if (glEndQueryPtr && gl_query) {
-            glEndQueryPtr(GL_TIME_ELAPSED);
+            if (!vector_texture || texture_w != display_w || texture_h != display_h) {
+                if (vector_texture) {
+                    SDL_DestroyTexture(vector_texture);
+                }
+                vector_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, display_w, display_h);
+                texture_w = display_w;
+                texture_h = display_h;
+            }
+
+            if (vector_texture && pixels) {
+                SDL_UpdateTexture(vector_texture, nullptr, pixels, display_w * 4);
+                SDL_RenderTexture(renderer, vector_texture, nullptr, nullptr);
+            }
+        } else {
+            ImGui_ImplSDLRenderer3_RenderDrawData(draw_data, renderer);
         }
 
         auto cpu_work_end = std::chrono::steady_clock::now();
         double cpu_work_time_ms = std::chrono::duration<double, std::milli>(cpu_work_end - cpu_work_start).count();
 
-        glfwSwapBuffers(window);
+        SDL_RenderPresent(renderer);
 
-        // Read back GPU query
-        double gpu_time_ms = 0.0;
-        if (glGetQueryObjectui64vPtr && gl_query) {
-            GLuint64 timeElapsedNs = 0;
-            glGetQueryObjectui64vPtr(gl_query, GL_QUERY_RESULT, &timeElapsedNs);
-            gpu_time_ms = (double)timeElapsedNs / 1000000.0;
-        }
+        auto render_end = std::chrono::steady_clock::now();
+        double gpu_time_ms = std::chrono::duration<double, std::milli>(render_end - render_start).count();
 
         auto frame_end = std::chrono::steady_clock::now();
         double frame_time_ms = std::chrono::duration<double, std::milli>(frame_end - frame_start).count();
@@ -679,8 +655,9 @@ int main(int argc, char** argv) {
         ImGuiExt::EventLoop::Instance().StepAfterRender();
     }
 
-    if (glDeleteQueriesPtr && gl_query) {
-        glDeleteQueriesPtr(1, &gl_query);
+    if (vector_texture) {
+        SDL_DestroyTexture(vector_texture);
+        vector_texture = nullptr;
     }
 
     if (vector_renderer) {
@@ -689,12 +666,13 @@ int main(int argc, char** argv) {
         vector_renderer = nullptr;
     }
 
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
+    ImGui_ImplSDLRenderer3_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
 
-    glfwDestroyWindow(window);
-    glfwTerminate();
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
 
     return 0;
 }

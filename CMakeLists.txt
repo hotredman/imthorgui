@@ -6,18 +6,20 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
-# --- GLFW ---
-set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+# --- SDL3 ---
+set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
+set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+set(SDL_STATIC ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
-    glfw
-    GIT_REPOSITORY https://github.com/glfw/glfw.git
-    GIT_TAG 3.4
+    SDL3
+    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+    GIT_TAG release-3.2.8
 )
-FetchContent_MakeAvailable(glfw)
+FetchContent_MakeAvailable(SDL3)
 
 # --- ThorVG ---
 add_subdirectory(third_party/thorvg)
@@ -31,8 +33,8 @@ set(IMGUI_SOURCES
     ${IMGUI_DIR}/imgui_draw.cpp
     ${IMGUI_DIR}/imgui_tables.cpp
     ${IMGUI_DIR}/imgui_widgets.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_sdl3.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_sdlrenderer3.cpp
 )
 
 add_library(imgui STATIC ${IMGUI_SOURCES})
@@ -42,9 +44,9 @@ target_include_directories(imgui PUBLIC
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
 )
-target_link_libraries(imgui PUBLIC glfw)
+target_link_libraries(imgui PUBLIC SDL3::SDL3-static)
 if (WIN32)
-    target_link_libraries(imgui PUBLIC opengl32 psapi)
+    target_link_libraries(imgui PUBLIC psapi)
 endif()
 
 # --- imthorgui Library (Recorder + Renderer) ---
@@ -54,9 +56,6 @@ add_library(imthorgui STATIC
 )
 target_include_directories(imthorgui PUBLIC src)
 target_link_libraries(imthorgui PUBLIC imgui thorvg)
-if (WIN32)
-    target_link_libraries(imthorgui PUBLIC opengl32)
-endif()
 
 # --- Demo Executable ---
 add_executable(demo

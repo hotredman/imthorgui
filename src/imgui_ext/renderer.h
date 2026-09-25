@@ -100,7 +100,6 @@ public:
     virtual const uint32_t* GetPixelBuffer() const = 0;
     virtual int GetWidth() const = 0;
     virtual int GetHeight() const = 0;
-    virtual void PresentGL() = 0;
 };
 
 // Factory for ThorVG renderer

@@ -2,6 +2,10 @@
 
 #include <cstddef>
 
+#ifndef SDL_SCALEMODE_INVALID
+#define SDL_SCALEMODE_INVALID ((SDL_ScaleMode)-1)
+#endif
+
 // Forward declarations of ImGui types so this header has zero dependencies
 // and causes no cyclic header resolution when included from imconfig.h
 struct ImDrawList;

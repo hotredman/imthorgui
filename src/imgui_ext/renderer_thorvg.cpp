@@ -15,52 +15,7 @@
 #undef DrawText
 #endif
 #endif
-
-#include <GL/gl.h>
-#include <GLFW/glfw3.h>
-
-#ifndef GL_CLAMP_TO_EDGE
-#define GL_CLAMP_TO_EDGE 0x812F
-#endif
-
 namespace ImGuiExt {
-
-// Typedefs for core OpenGL 3 functions loaded via glfwGetProcAddress
-typedef void (APIENTRY *PFNGLGENVERTEXARRAYSPROC) (GLsizei n, GLuint *arrays);
-typedef void (APIENTRY *PFNGLBINDVERTEXARRAYPROC) (GLuint array);
-typedef void (APIENTRY *PFNGLDELETEVERTEXARRAYSPROC) (GLsizei n, const GLuint *arrays);
-typedef void (APIENTRY *PFNGLGENBUFFERSPROC) (GLsizei n, GLuint *buffers);
-typedef void (APIENTRY *PFNGLBINDBUFFERPROC) (GLenum target, GLuint buffer);
-typedef void (APIENTRY *PFNGLDELETEBUFFERSPROC) (GLsizei n, const GLuint *buffers);
-typedef void (APIENTRY *PFNGLBUFFERDATAPROC) (GLenum target, ptrdiff_t size, const void *data, GLenum usage);
-typedef void (APIENTRY *PFNGLENABLEVERTEXATTRIBARRAYPROC) (GLuint index);
-typedef void (APIENTRY *PFNGLVERTEXATTRIBPOINTERPROC) (GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
-typedef GLuint (APIENTRY *PFNGLCREATESHADERPROC) (GLenum type);
-typedef void (APIENTRY *PFNGLSHADERSOURCEPROC) (GLuint shader, GLsizei count, const char* const *string, const GLint *length);
-typedef void (APIENTRY *PFNGLCOMPILESHADERPROC) (GLuint shader);
-typedef void (APIENTRY *PFNGLGETSHADERIVPROC) (GLuint shader, GLenum pname, GLint *params);
-typedef void (APIENTRY *PFNGLGETSHADERINFOLOGPROC) (GLuint shader, GLsizei bufSize, GLsizei *length, char *infoLog);
-typedef GLuint (APIENTRY *PFNGLCREATEPROGRAMPROC) (void);
-typedef void (APIENTRY *PFNGLATTACHSHADERPROC) (GLuint program, GLuint shader);
-typedef void (APIENTRY *PFNGLLINKPROGRAMPROC) (GLuint program);
-typedef void (APIENTRY *PFNGLGETPROGRAMIVPROC) (GLuint program, GLenum pname, GLint *params);
-typedef void (APIENTRY *PFNGLGETPROGRAMINFOLOGPROC) (GLuint program, GLsizei bufSize, GLsizei *length, char *infoLog);
-typedef void (APIENTRY *PFNGLUSEPROGRAMPROC) (GLuint program);
-typedef void (APIENTRY *PFNGLDELETEPROGRAMPROC) (GLuint program);
-typedef void (APIENTRY *PFNGLDELETESHADERPROC) (GLuint shader);
-typedef GLint (APIENTRY *PFNGLGETUNIFORMLOCATIONPROC) (GLuint program, const char *name);
-typedef void (APIENTRY *PFNGLUNIFORM1IPROC) (GLint location, GLint v0);
-typedef void (APIENTRY *PFNGLACTIVETEXTUREPROC) (GLenum texture);
-typedef void (APIENTRY *PFNGLBINDATTRIBLOCATIONPROC) (GLuint program, GLuint index, const char *name);
-typedef GLint (APIENTRY *PFNGLGETATTRIBLOCATIONPROC) (GLuint program, const char *name);
-
-#define GL_FRAGMENT_SHADER 0x8B30
-#define GL_VERTEX_SHADER   0x8B31
-#define GL_COMPILE_STATUS  0x8B81
-#define GL_LINK_STATUS     0x8B82
-#define GL_ARRAY_BUFFER    0x8892
-#define GL_STATIC_DRAW     0x88E4
-#define GL_TEXTURE0        0x84C0
 
 class ThorVGRenderer : public IRenderer {
 public:
@@ -112,8 +67,6 @@ public:
     const uint32_t* GetPixelBuffer() const override { return m_pixels.data(); }
     int GetWidth() const override { return m_width; }
     int GetHeight() const override { return m_height; }
-    void PresentGL() override;
-
 private:
     int m_width = 0;
     int m_height = 0;
@@ -126,45 +79,8 @@ private:
     ImVec2 m_display_scale = ImVec2(1.0f, 1.0f);
     ImVec2 m_display_pos = ImVec2(0.0f, 0.0f);
 
-    // OpenGL presentation
-    GLuint m_gl_texture = 0;
-    GLuint m_gl_vao = 0;
-    GLuint m_gl_vbo = 0;
-    GLuint m_gl_shader = 0;
-    bool m_gl_initialized = false;
-
-    // GL function pointers
-    PFNGLGENVERTEXARRAYSPROC m_glGenVertexArrays = nullptr;
-    PFNGLBINDVERTEXARRAYPROC m_glBindVertexArray = nullptr;
-    PFNGLDELETEVERTEXARRAYSPROC m_glDeleteVertexArrays = nullptr;
-    PFNGLGENBUFFERSPROC m_glGenBuffers = nullptr;
-    PFNGLBINDBUFFERPROC m_glBindBuffer = nullptr;
-    PFNGLDELETEBUFFERSPROC m_glDeleteBuffers = nullptr;
-    PFNGLBUFFERDATAPROC m_glBufferData = nullptr;
-    PFNGLENABLEVERTEXATTRIBARRAYPROC m_glEnableVertexAttribArray = nullptr;
-    PFNGLVERTEXATTRIBPOINTERPROC m_glVertexAttribPointer = nullptr;
-    PFNGLCREATESHADERPROC m_glCreateShader = nullptr;
-    PFNGLSHADERSOURCEPROC m_glShaderSource = nullptr;
-    PFNGLCOMPILESHADERPROC m_glCompileShader = nullptr;
-    PFNGLGETSHADERIVPROC m_glGetShaderiv = nullptr;
-    PFNGLGETSHADERINFOLOGPROC m_glGetShaderInfoLog = nullptr;
-    PFNGLCREATEPROGRAMPROC m_glCreateProgram = nullptr;
-    PFNGLATTACHSHADERPROC m_glAttachShader = nullptr;
-    PFNGLLINKPROGRAMPROC m_glLinkProgram = nullptr;
-    PFNGLGETPROGRAMIVPROC m_glGetProgramiv = nullptr;
-    PFNGLGETPROGRAMINFOLOGPROC m_glGetProgramInfoLog = nullptr;
-    PFNGLUSEPROGRAMPROC m_glUseProgram = nullptr;
-    PFNGLDELETEPROGRAMPROC m_glDeleteProgram = nullptr;
-    PFNGLDELETESHADERPROC m_glDeleteShader = nullptr;
-    PFNGLGETUNIFORMLOCATIONPROC m_glGetUniformLocation = nullptr;
-    PFNGLUNIFORM1IPROC m_glUniform1i = nullptr;
-    PFNGLACTIVETEXTUREPROC m_glActiveTexture = nullptr;
-    PFNGLBINDATTRIBLOCATIONPROC m_glBindAttribLocation = nullptr;
-    PFNGLGETATTRIBLOCATIONPROC m_glGetAttribLocation = nullptr;
-
     void ApplyClip(tvg::Paint* paint);
     void FlushCanvas();
-    void InitGLResources();
     void RasterizeFallbackTriangles(const ImDrawList* dl, const DrawCommand& cmd);
 };
 
@@ -226,24 +142,6 @@ void ThorVGRenderer::Shutdown() {
         m_canvas = nullptr;
     }
     tvg::Initializer::term();
-
-    if (m_gl_texture) {
-        glDeleteTextures(1, &m_gl_texture);
-        m_gl_texture = 0;
-    }
-    if (m_glDeleteProgram && m_gl_shader) {
-        m_glDeleteProgram(m_gl_shader);
-        m_gl_shader = 0;
-    }
-    if (m_glDeleteBuffers && m_gl_vbo) {
-        m_glDeleteBuffers(1, &m_gl_vbo);
-        m_gl_vbo = 0;
-    }
-    if (m_glDeleteVertexArrays && m_gl_vao) {
-        m_glDeleteVertexArrays(1, &m_gl_vao);
-        m_gl_vao = 0;
-    }
-    m_gl_initialized = false;
 }
 
 void ThorVGRenderer::Resize(int width, int height) {
@@ -254,10 +152,6 @@ void ThorVGRenderer::Resize(int width, int height) {
         m_pixels.resize(width * height, 0);
         if (m_canvas) {
             m_canvas->target(m_pixels.data(), width, width, height, tvg::ColorSpace::ABGR8888S);
-        }
-        if (m_gl_texture) {
-            glBindTexture(GL_TEXTURE_2D, m_gl_texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_width, m_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         }
     }
 }
@@ -939,184 +833,6 @@ void ThorVGRenderer::RenderDrawData(ImDrawData* draw_data) {
     }
 
     EndFrame();
-}
-
-void ThorVGRenderer::InitGLResources() {
-    if (m_gl_initialized) return;
-
-    // Load function pointers via glfwGetProcAddress
-    m_glGenVertexArrays = (PFNGLGENVERTEXARRAYSPROC)glfwGetProcAddress("glGenVertexArrays");
-    m_glBindVertexArray = (PFNGLBINDVERTEXARRAYPROC)glfwGetProcAddress("glBindVertexArray");
-    m_glDeleteVertexArrays = (PFNGLDELETEVERTEXARRAYSPROC)glfwGetProcAddress("glDeleteVertexArrays");
-    m_glGenBuffers = (PFNGLGENBUFFERSPROC)glfwGetProcAddress("glGenBuffers");
-    m_glBindBuffer = (PFNGLBINDBUFFERPROC)glfwGetProcAddress("glBindBuffer");
-    m_glDeleteBuffers = (PFNGLDELETEBUFFERSPROC)glfwGetProcAddress("glDeleteBuffers");
-    m_glBufferData = (PFNGLBUFFERDATAPROC)glfwGetProcAddress("glBufferData");
-    m_glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)glfwGetProcAddress("glEnableVertexAttribArray");
-    m_glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)glfwGetProcAddress("glVertexAttribPointer");
-    m_glCreateShader = (PFNGLCREATESHADERPROC)glfwGetProcAddress("glCreateShader");
-    m_glShaderSource = (PFNGLSHADERSOURCEPROC)glfwGetProcAddress("glShaderSource");
-    m_glCompileShader = (PFNGLCOMPILESHADERPROC)glfwGetProcAddress("glCompileShader");
-    m_glGetShaderiv = (PFNGLGETSHADERIVPROC)glfwGetProcAddress("glGetShaderiv");
-    m_glGetShaderInfoLog = (PFNGLGETSHADERINFOLOGPROC)glfwGetProcAddress("glGetShaderInfoLog");
-    m_glCreateProgram = (PFNGLCREATEPROGRAMPROC)glfwGetProcAddress("glCreateProgram");
-    m_glAttachShader = (PFNGLATTACHSHADERPROC)glfwGetProcAddress("glAttachShader");
-    m_glLinkProgram = (PFNGLLINKPROGRAMPROC)glfwGetProcAddress("glLinkProgram");
-    m_glGetProgramiv = (PFNGLGETPROGRAMIVPROC)glfwGetProcAddress("glGetProgramiv");
-    m_glGetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)glfwGetProcAddress("glGetProgramInfoLog");
-    m_glUseProgram = (PFNGLUSEPROGRAMPROC)glfwGetProcAddress("glUseProgram");
-    m_glDeleteProgram = (PFNGLDELETEPROGRAMPROC)glfwGetProcAddress("glDeleteProgram");
-    m_glDeleteShader = (PFNGLDELETESHADERPROC)glfwGetProcAddress("glDeleteShader");
-    m_glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)glfwGetProcAddress("glGetUniformLocation");
-    m_glUniform1i = (PFNGLUNIFORM1IPROC)glfwGetProcAddress("glUniform1i");
-    m_glActiveTexture = (PFNGLACTIVETEXTUREPROC)glfwGetProcAddress("glActiveTexture");
-    m_glBindAttribLocation = (PFNGLBINDATTRIBLOCATIONPROC)glfwGetProcAddress("glBindAttribLocation");
-    m_glGetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)glfwGetProcAddress("glGetAttribLocation");
-
-    // Texture creation
-    glGenTextures(1, &m_gl_texture);
-    glBindTexture(GL_TEXTURE_2D, m_gl_texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_width, m_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, m_pixels.data());
-
-    if (m_glCreateShader && m_glCreateProgram && m_glGenVertexArrays && m_glGenBuffers) {
-        // GL3 shader pipeline
-        const char* vtx_src =
-            "#version 130\n"
-            "in vec2 Position;\n"
-            "in vec2 UV;\n"
-            "out vec2 Frag_UV;\n"
-            "void main() {\n"
-            "    Frag_UV = UV;\n"
-            "    gl_Position = vec4(Position, 0.0, 1.0);\n"
-            "}\n";
-
-        const char* frag_src =
-            "#version 130\n"
-            "uniform sampler2D Texture;\n"
-            "in vec2 Frag_UV;\n"
-            "out vec4 Out_Color;\n"
-            "void main() {\n"
-            "    Out_Color = texture(Texture, Frag_UV);\n"
-            "}\n";
-
-        GLuint vshader = m_glCreateShader(GL_VERTEX_SHADER);
-        m_glShaderSource(vshader, 1, &vtx_src, nullptr);
-        m_glCompileShader(vshader);
-
-        GLuint fshader = m_glCreateShader(GL_FRAGMENT_SHADER);
-        m_glShaderSource(fshader, 1, &frag_src, nullptr);
-        m_glCompileShader(fshader);
-
-        m_gl_shader = m_glCreateProgram();
-        m_glAttachShader(m_gl_shader, vshader);
-        m_glAttachShader(m_gl_shader, fshader);
-
-        if (m_glBindAttribLocation) {
-            m_glBindAttribLocation(m_gl_shader, 0, "Position");
-            m_glBindAttribLocation(m_gl_shader, 1, "UV");
-        }
-
-        m_glLinkProgram(m_gl_shader);
-
-        GLint link_status = 0;
-        m_glGetProgramiv(m_gl_shader, GL_LINK_STATUS, &link_status);
-        if (link_status == 0) {
-            char log[512];
-            m_glGetProgramInfoLog(m_gl_shader, sizeof(log), nullptr, log);
-            std::cerr << "[ThorVG GL Error] Shader link failed: " << log << "\n";
-        }
-
-        GLint loc_pos = m_glGetAttribLocation ? m_glGetAttribLocation(m_gl_shader, "Position") : 0;
-        GLint loc_uv  = m_glGetAttribLocation ? m_glGetAttribLocation(m_gl_shader, "UV") : 1;
-        if (loc_pos < 0) loc_pos = 0;
-        if (loc_uv < 0) loc_uv = 1;
-        std::cout << "[ThorVG GL Init] Attrib Location Position: " << loc_pos << ", UV: " << loc_uv << "\n";
-
-        m_glDeleteShader(vshader);
-        m_glDeleteShader(fshader);
-
-        // Quad geometry: 2 triangles covering [-1, 1] screen with [0, 1] UV
-        float vertices[] = {
-            // Pos        // UV
-            -1.0f,  1.0f, 0.0f, 0.0f,
-            -1.0f, -1.0f, 0.0f, 1.0f,
-             1.0f, -1.0f, 1.0f, 1.0f,
-
-            -1.0f,  1.0f, 0.0f, 0.0f,
-             1.0f, -1.0f, 1.0f, 1.0f,
-             1.0f,  1.0f, 1.0f, 0.0f
-        };
-
-        m_glGenVertexArrays(1, &m_gl_vao);
-        m_glGenBuffers(1, &m_gl_vbo);
-
-        m_glBindVertexArray(m_gl_vao);
-        m_glBindBuffer(GL_ARRAY_BUFFER, m_gl_vbo);
-        m_glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-        m_glEnableVertexAttribArray(loc_pos);
-        m_glVertexAttribPointer(loc_pos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-
-        m_glEnableVertexAttribArray(loc_uv);
-        m_glVertexAttribPointer(loc_uv, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-
-        m_glBindBuffer(GL_ARRAY_BUFFER, 0);
-        m_glBindVertexArray(0);
-    }
-
-    m_gl_initialized = true;
-}
-
-void ThorVGRenderer::PresentGL() {
-    if (!m_gl_initialized) {
-        InitGLResources();
-    }
-
-    // Upload rendered software pixel buffer to GL texture
-    glBindTexture(GL_TEXTURE_2D, m_gl_texture);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_width, m_height, GL_RGBA, GL_UNSIGNED_BYTE, m_pixels.data());
-
-    glViewport(0, 0, m_width, m_height);
-    glDisable(GL_SCISSOR_TEST);
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    if (m_glBindBuffer) {
-        m_glBindBuffer(GL_ARRAY_BUFFER, 0);
-        m_glBindBuffer(0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/, 0);
-    }
-
-    if (m_gl_shader && m_gl_vao) {
-        // GL3 shader path
-        m_glUseProgram(m_gl_shader);
-        if (m_glActiveTexture) m_glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, m_gl_texture);
-        if (m_glGetUniformLocation && m_glUniform1i) {
-            GLint loc = m_glGetUniformLocation(m_gl_shader, "Texture");
-            if (loc >= 0) m_glUniform1i(loc, 0);
-        }
-
-        m_glBindVertexArray(m_gl_vao);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        m_glBindVertexArray(0);
-        m_glUseProgram(0);
-    } else {
-        // Immediate mode compatibility path
-        glEnable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, m_gl_texture);
-        glBegin(GL_QUADS);
-        glTexCoord2f(0.0f, 0.0f); glVertex2f(-1.0f,  1.0f);
-        glTexCoord2f(1.0f, 0.0f); glVertex2f( 1.0f,  1.0f);
-        glTexCoord2f(1.0f, 1.0f); glVertex2f( 1.0f, -1.0f);
-        glTexCoord2f(0.0f, 1.0f); glVertex2f(-1.0f, -1.0f);
-        glEnd();
-        glDisable(GL_TEXTURE_2D);
-    }
 }
 
 IRenderer* CreateThorVGRenderer() {
