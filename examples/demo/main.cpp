@@ -79,6 +79,13 @@ struct PerformanceMetrics {
             display_gpu_frame_ms = gpu_time_ms;
             display_skipped_frames = ImGuiExt::FrameDeduplicator::Instance().GetTotalFramesSkipped();
             last_display_update_time = now;
+
+            static auto last_print = std::chrono::steady_clock::now();
+            if (std::chrono::duration<double>(now - last_print).count() >= 1.0) {
+                last_print = now;
+                std::cout << "[Live Metrics] FPS: " << display_fps << ", CPU Work: " << display_cpu_work_ms
+                          << " ms, Total Frame: " << display_cpu_frame_ms << " ms, Present/GPU: " << display_gpu_frame_ms << " ms\n";
+            }
         }
 
 #ifdef _WIN32
@@ -279,10 +286,14 @@ struct BenchmarkSession {
 };
 
 int main(int argc, char* argv[]) {
+    std::cout.setf(std::ios::unitbuf);
     bool auto_benchmark = false;
+    double auto_exit_seconds = 0.0;
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--benchmark") {
             auto_benchmark = true;
+        } else if (std::string(argv[i]) == "--profile" && i + 1 < argc) {
+            auto_exit_seconds = std::atof(argv[++i]);
         }
     }
 
@@ -381,8 +392,18 @@ int main(int argc, char* argv[]) {
     int auto_bench_stage = auto_benchmark ? 1 : 0;
     auto bench_stage_timer = std::chrono::steady_clock::now();
 
+    auto app_start_time = std::chrono::steady_clock::now();
     while (!ImGuiExt::EventLoop::Instance().ShouldClose()) {
         auto frame_start = std::chrono::steady_clock::now();
+
+        if (auto_exit_seconds > 0.0) {
+            double run_time = std::chrono::duration<double>(frame_start - app_start_time).count();
+            if (run_time >= auto_exit_seconds) {
+                std::cout << "[Profile] Exiting after " << run_time << " s\n";
+                ImGuiExt::EventLoop::Instance().SetShouldClose(true);
+                break;
+            }
+        }
 
         // Automated benchmark sequencer
         if (auto_benchmark) {

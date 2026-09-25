@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <chrono>
+#include <thread>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -106,7 +108,8 @@ bool ThorVGRenderer::Init(int width, int height) {
     m_width = width;
     m_height = height;
 
-    tvg::Initializer::init(0);
+    uint32_t threads = (std::max)(1u, std::thread::hardware_concurrency());
+    tvg::Initializer::init(threads);
 
     m_pixels.resize(width * height, 0);
     m_canvas = tvg::SwCanvas::gen(tvg::EngineOption::Default);
@@ -325,8 +328,13 @@ void ThorVGRenderer::StrokePolyline(const ImVec2* points, int count, Color col, 
     }
     if (closed) shape->close();
     shape->strokeWidth(thickness);
-    shape->strokeCap(tvg::StrokeCap::Round);
-    shape->strokeJoin(tvg::StrokeJoin::Round);
+    if (count > 32) {
+        shape->strokeCap(tvg::StrokeCap::Square);
+        shape->strokeJoin(tvg::StrokeJoin::Bevel);
+    } else {
+        shape->strokeCap(tvg::StrokeCap::Round);
+        shape->strokeJoin(tvg::StrokeJoin::Round);
+    }
     shape->strokeFill(col.r, col.g, col.b, col.a);
     ApplyClip(shape);
     m_canvas->add(shape);

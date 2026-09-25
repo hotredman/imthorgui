@@ -177,7 +177,7 @@ private:
 
     void WorkerThread() {
         double phase = 0.0;
-        auto last_repaint_time = std::chrono::steady_clock::now();
+        auto next_tick = std::chrono::steady_clock::now();
 
         // Simple high-throughput PRNG for noise
         uint32_t rng_state = 123456789;
@@ -191,10 +191,12 @@ private:
         while (m_running.load()) {
             if (m_paused.load()) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                next_tick = std::chrono::steady_clock::now();
                 continue;
             }
 
             int target_fps = m_target_fps.load();
+            if (target_fps < 10) target_fps = 10;
             int chunk_size = m_sample_rate / target_fps;
             if (chunk_size < 10) chunk_size = 10;
 
@@ -260,21 +262,17 @@ private:
                 m_cached_rms = (float)sqrt(sum_sq / chunk_size);
             }
 
-            // Trigger UI update exactly when chunk is ready
+            // Signal UI to render 1 fresh frame
+            ImGuiExt::RequestRepaint(1);
+
+            // Precision frame pacing using steady_clock sleep_until
+            auto interval = std::chrono::microseconds(1000000 / target_fps);
+            next_tick += interval;
             auto now = std::chrono::steady_clock::now();
-            double elapsed_ms = std::chrono::duration<double, std::milli>(now - last_repaint_time).count();
-            double target_interval_ms = 1000.0 / (double)target_fps;
-
-            if (elapsed_ms >= target_interval_ms) {
-                last_repaint_time = now;
-                ImGuiExt::RequestRepaint(1);
+            if (next_tick < now) {
+                next_tick = now + interval;
             }
-
-            // Sleep remainder to pace the stream
-            double remaining_ms = target_interval_ms - elapsed_ms;
-            if (remaining_ms > 1.0) {
-                std::this_thread::sleep_for(std::chrono::milliseconds((int)remaining_ms));
-            }
+            std::this_thread::sleep_until(next_tick);
         }
     }
 };
@@ -388,8 +386,10 @@ public:
         // Draw waveform via AddPolyline (intercepted as StrokePolyline by ThorVG!)
         if (rendered_pts > 1) {
             // Glow effect: subtle wider line behind
-            ImU32 glow_col = 0x3300FF66;
-            dl->AddPolyline(m_downsampled_points.data(), (int)rendered_pts, glow_col, 0, m_line_thickness + 2.5f);
+            if (m_glow_effect) {
+                ImU32 glow_col = 0x3300FF66;
+                dl->AddPolyline(m_downsampled_points.data(), (int)rendered_pts, glow_col, 0, m_line_thickness + 2.5f);
+            }
 
             // Main sharp trace (phosphor green or cyan)
             ImU32 trace_col = m_cyan_trace ? 0xFF00E5FF : 0xFF33FF77;
@@ -437,6 +437,8 @@ public:
 
         ImGui::SameLine();
         ImGui::Checkbox("Cyan Phosphor", &m_cyan_trace);
+        ImGui::SameLine();
+        ImGui::Checkbox("Phosphor Glow", &m_glow_effect);
 
         int cap = (int)(m_signal.GetBufferCapacity() / 1000);
         if (ImGui::SliderInt("Buffer Size (kSamples)", &cap, 10, 250, "%d kPts")) {
@@ -456,6 +458,7 @@ private:
 
     bool m_use_lttb = true;
     bool m_cyan_trace = false;
+    bool m_glow_effect = false;
     float m_line_thickness = 1.8f;
     float m_y_min = -2.2f;
     float m_y_max = 2.2f;

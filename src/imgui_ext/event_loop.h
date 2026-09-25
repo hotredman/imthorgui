@@ -40,10 +40,13 @@ public:
         int current = m_repaint_frames_left.load();
         while (current < frames && !m_repaint_frames_left.compare_exchange_weak(current, frames)) {}
         if (m_window) {
-            SDL_Event event;
-            SDL_zero(event);
-            event.type = SDL_EVENT_USER;
-            SDL_PushEvent(&event);
+            bool expected = false;
+            if (m_user_event_pending.compare_exchange_strong(expected, true)) {
+                SDL_Event event;
+                SDL_zero(event);
+                event.type = SDL_EVENT_USER;
+                SDL_PushEvent(&event);
+            }
         }
     }
 
@@ -147,6 +150,8 @@ private:
         if (event.type != SDL_EVENT_USER && event.type != SDL_EVENT_POLL_SENTINEL) {
             int current = m_repaint_frames_left.load();
             while (current < 3 && !m_repaint_frames_left.compare_exchange_weak(current, 3)) {}
+        } else if (event.type == SDL_EVENT_USER) {
+            m_user_event_pending.store(false);
         }
 
         ImGui_ImplSDL3_ProcessEvent(&event);
@@ -156,6 +161,7 @@ private:
     bool m_reactive_mode = true;
     bool m_should_close = false;
     std::atomic<int> m_repaint_frames_left{3};
+    std::atomic<bool> m_user_event_pending{false};
 };
 
 // Global public API

@@ -75,3 +75,8 @@ add_executable(test_lttb
     tests/test_lttb.cpp
 )
 target_link_libraries(test_lttb PRIVATE imthorgui)
+
+add_executable(profile_oscilloscope
+    tests/profile_oscilloscope.cpp
+)
+target_link_libraries(profile_oscilloscope PRIVATE imthorgui)
